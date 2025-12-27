@@ -12,17 +12,6 @@
       <h1>Shopping List Generator</h1>
       <p class="tagline">Parse comma or newline separated items into timestamped shopping lists. All data stays in your browser and can sync to Google Drive.</p>
     </div>
-    <div class="auth-controls">
-      <label class="config-label" for="clientId">Google OAuth Client ID</label>
-      <input id="clientId" type="text" placeholder="Paste your OAuth Client ID" aria-label="Google OAuth Client ID">
-      <label class="config-label" for="apiKey">Google API Key</label>
-      <input id="apiKey" type="text" placeholder="Paste your API Key" aria-label="Google API Key">
-      <div class="auth-buttons">
-        <button id="authorizeButton" class="primary">Sign in with Google</button>
-        <button id="signoutButton" class="secondary">Sign out</button>
-      </div>
-      <p class="status" id="syncStatus">Drive sync is idle.</p>
-    </div>
   </header>
 
   <main class="layout">
@@ -45,8 +34,7 @@
       <div class="panel-heading">
         <h2>Your lists</h2>
         <div class="panel-actions">
-          <button id="syncDrive" class="primary">Sync to Drive</button>
-          <button id="loadDrive" class="secondary">Load from Drive</button>
+          <button id="downloadBackup" class="secondary">Download Backup</button>
         </div>
       </div>
       <div id="listContainer" class="list-container" aria-live="polite"></div>
@@ -58,7 +46,7 @@
       <header class="list-header">
         <div>
           <p class="list-date"></p>
-          <h3 class="list-title"></h3>
+          <h3 class="list-title" contenteditable="true" spellcheck="false"></h3>
         </div>
         <button class="ghost remove-list" aria-label="Delete list">✕</button>
       </header>
@@ -70,13 +58,11 @@
     <li class="item">
       <label>
         <input type="checkbox" class="item-checkbox">
-        <span class="item-text"></span>
+        <span class="item-text" contenteditable="true" spellcheck="false"></span>
       </label>
     </li>
   </template>
 
-  <script src="https://apis.google.com/js/api.js"></script>
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script type="module" src="script.js"></script>
 </body>
 </html>
