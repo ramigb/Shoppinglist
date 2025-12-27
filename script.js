@@ -1,6 +1,6 @@
-const STORAGE_KEY = 'shoppinglists:data';
-const DRIVE_FILE_NAME = 'shoppinglist-data.json';
-const SCOPES = 'https://www.googleapis.com/auth/drive.file';
+const DB_NAME = 'ShoppingListDB';
+const DB_VERSION = 1;
+const STORE_NAME = 'lists';
 
 const elements = {
   listTitle: document.getElementById('listTitle'),
@@ -10,30 +10,78 @@ const elements = {
   listContainer: document.getElementById('listContainer'),
   listTemplate: document.getElementById('listTemplate'),
   itemTemplate: document.getElementById('itemTemplate'),
-  syncDrive: document.getElementById('syncDrive'),
-  loadDrive: document.getElementById('loadDrive'),
-  syncStatus: document.getElementById('syncStatus'),
-  clientId: document.getElementById('clientId'),
-  apiKey: document.getElementById('apiKey'),
-  authorizeButton: document.getElementById('authorizeButton'),
-  signoutButton: document.getElementById('signoutButton'),
+  downloadBackup: document.getElementById('downloadBackup'),
 };
 
-let lists = readFromStorage();
-let gapiInited = false;
-let gisInited = false;
-let tokenClient = null;
+let lists = [];
+let db;
 
-renderLists();
-attachEvents();
+initApp();
+
+async function initApp() {
+  try {
+    await initDB();
+    lists = await getAllLists();
+    lists.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    renderLists();
+    attachEvents();
+  } catch (error) {
+    console.error('Failed to initialize app:', error);
+  }
+}
+
+function initDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onerror = (event) => reject('IndexedDB error: ' + event.target.error);
+    request.onsuccess = (event) => {
+      db = event.target.result;
+      resolve(db);
+    };
+    request.onupgradeneeded = (event) => {
+      const db = event.target.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      }
+    };
+  });
+}
+
+function getAllLists() {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([STORE_NAME], 'readonly');
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.getAll();
+    request.onsuccess = () => resolve(request.result || []);
+    request.onerror = (event) => reject('Error fetching lists: ' + event.target.error);
+  });
+}
+
+function saveListToDB(list) {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([STORE_NAME], 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.put(list);
+    request.onsuccess = () => resolve();
+    request.onerror = (event) => reject('Error saving list: ' + event.target.error);
+  });
+}
+
+function deleteListFromDB(id) {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([STORE_NAME], 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.delete(id);
+    request.onsuccess = () => resolve();
+    request.onerror = (event) => reject('Error deleting list: ' + event.target.error);
+  });
+}
 
 function attachEvents() {
-  maybeEnableButtons();
-
-  elements.generateButton.addEventListener('click', () => {
+  elements.generateButton.addEventListener('click', async () => {
     const parsed = parseItems(elements.itemInput.value);
     if (!parsed.length) {
-      setStatus('Add at least one item to create a list.');
+      alert('Add at least one item to create a list.');
       return;
     }
     const createdAt = new Date();
@@ -45,11 +93,10 @@ function attachEvents() {
       items: parsed.map((text) => ({ id: crypto.randomUUID(), text, done: false })),
     };
     lists.unshift(list);
-    persist();
+    await saveListToDB(list);
     renderLists();
     elements.itemInput.value = '';
     elements.listTitle.value = '';
-    setStatus('List saved locally. Use Drive buttons to sync.');
   });
 
   elements.clearInput.addEventListener('click', () => {
@@ -57,10 +104,20 @@ function attachEvents() {
     elements.listTitle.value = '';
   });
 
-  elements.syncDrive.addEventListener('click', saveToDrive);
-  elements.loadDrive.addEventListener('click', loadFromDrive);
-  elements.authorizeButton.addEventListener('click', handleAuthClick);
-  elements.signoutButton.addEventListener('click', handleSignoutClick);
+  elements.downloadBackup.addEventListener('click', downloadBackup);
+}
+
+async function downloadBackup() {
+  const lists = await getAllLists();
+  const blob = new Blob([JSON.stringify({ lists }, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `shopping-list-backup-${new Date().toISOString().split('T')[0]}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 function parseItems(raw) {
@@ -92,7 +149,16 @@ function renderLists() {
 
   lists.forEach((list) => {
     const node = elements.listTemplate.content.cloneNode(true);
-    node.querySelector('.list-title').textContent = list.title;
+    const titleNode = node.querySelector('.list-title');
+    titleNode.textContent = list.title;
+    titleNode.addEventListener('blur', () => updateListTitle(list.id, titleNode.textContent));
+    titleNode.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        titleNode.blur();
+      }
+    });
+
     node.querySelector('.list-date').textContent = `Created ${formatDate(new Date(list.createdAt))}`;
 
     const ul = node.querySelector('.items');
@@ -103,6 +169,15 @@ function renderLists() {
       checkbox.checked = item.done;
       text.textContent = item.text;
       checkbox.addEventListener('change', () => toggleItem(list.id, item.id, checkbox.checked));
+
+      text.addEventListener('blur', () => updateItemText(list.id, item.id, text.textContent));
+      text.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          text.blur();
+        }
+      });
+
       ul.appendChild(itemNode);
     });
 
@@ -113,201 +188,51 @@ function renderLists() {
   });
 }
 
-function toggleItem(listId, itemId, done) {
-  lists = lists.map((list) =>
-    list.id === listId
-      ? { ...list, items: list.items.map((item) => (item.id === itemId ? { ...item, done } : item)) }
-      : list
-  );
-  persist();
+async function toggleItem(listId, itemId, done) {
+  const listIndex = lists.findIndex(l => l.id === listId);
+  if (listIndex === -1) return;
+
+  const list = lists[listIndex];
+  const updatedList = {
+    ...list,
+    items: list.items.map((item) => (item.id === itemId ? { ...item, done } : item))
+  };
+
+  lists[listIndex] = updatedList;
+  await saveListToDB(updatedList);
 }
 
-function removeList(listId) {
+async function updateListTitle(listId, newTitle) {
+  const listIndex = lists.findIndex(l => l.id === listId);
+  if (listIndex === -1) return;
+
+  const list = lists[listIndex];
+  if (list.title === newTitle) return;
+
+  const updatedList = { ...list, title: newTitle };
+  lists[listIndex] = updatedList;
+  await saveListToDB(updatedList);
+}
+
+async function updateItemText(listId, itemId, newText) {
+  const listIndex = lists.findIndex(l => l.id === listId);
+  if (listIndex === -1) return;
+
+  const list = lists[listIndex];
+  const item = list.items.find(i => i.id === itemId);
+  if (item && item.text === newText) return;
+
+  const updatedList = {
+    ...list,
+    items: list.items.map((item) => (item.id === itemId ? { ...item, text: newText } : item))
+  };
+
+  lists[listIndex] = updatedList;
+  await saveListToDB(updatedList);
+}
+
+async function removeList(listId) {
   lists = lists.filter((list) => list.id !== listId);
-  persist();
+  await deleteListFromDB(listId);
   renderLists();
-}
-
-function persist() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(lists));
-}
-
-function readFromStorage() {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) return [];
-  try {
-    return JSON.parse(raw);
-  } catch (error) {
-    console.error('Unable to parse local data', error);
-    return [];
-  }
-}
-
-// ---- Google Drive integration ----
-window.onload = () => {
-  gapi.load('client', () => {
-    maybeInitGapiClient();
-  });
-};
-
-async function maybeInitGapiClient() {
-  if (gapiInited) return;
-  const apiKey = elements.apiKey.value.trim();
-  if (!apiKey) {
-    setStatus('Add your Google API key and OAuth client ID to enable Drive sync.');
-    return;
-  }
-  try {
-    await gapi.client.init({
-      apiKey,
-      discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
-    });
-    gapiInited = true;
-    setStatus('Google API ready. Sign in to start syncing.');
-    maybeEnableButtons();
-  } catch (error) {
-    setStatus(`Failed to init Google API: ${error.message}`);
-  }
-}
-
-function maybeEnableButtons() {
-  const ready = gapiInited && gisInited;
-  elements.authorizeButton.disabled = !ready;
-}
-
-function initTokenClient() {
-  const clientId = elements.clientId.value.trim();
-  const apiKey = elements.apiKey.value.trim();
-  if (!clientId || !apiKey) {
-    setStatus('Add your Google API key and OAuth client ID to enable Drive sync.');
-    return;
-  }
-
-  if (!tokenClient) {
-    tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: clientId,
-      scope: SCOPES,
-      callback: handleTokenResponse,
-    });
-  }
-
-  gisInited = true;
-  maybeEnableButtons();
-}
-
-elements.clientId.addEventListener('input', initTokenClient);
-elements.apiKey.addEventListener('input', () => {
-  initTokenClient();
-  maybeInitGapiClient();
-});
-
-function handleAuthClick() {
-  if (!gisInited) {
-    initTokenClient();
-  }
-  if (!tokenClient) return;
-  tokenClient.requestAccessToken({ prompt: 'consent' });
-}
-
-function handleTokenResponse(response) {
-  if (response.error) {
-    setStatus(`Auth error: ${response.error}`);
-    return;
-  }
-  gapi.client.setToken(response); // eslint-disable-line no-undef
-  setStatus('Signed in. You can sync lists with Drive.');
-}
-
-function handleSignoutClick() {
-  const token = gapi.client.getToken(); // eslint-disable-line no-undef
-  if (token !== null) {
-    google.accounts.oauth2.revoke(token.access_token);
-    gapi.client.setToken(''); // eslint-disable-line no-undef
-  }
-  setStatus('Signed out from Google Drive.');
-}
-
-async function saveToDrive() {
-  if (!ensureAuth()) return;
-  setStatus('Syncing to Drive...');
-  try {
-    const fileId = await findDriveFile();
-    const content = new Blob([JSON.stringify({ lists })], { type: 'application/json' });
-    if (fileId) {
-      await gapi.client.drive.files.update({
-        fileId,
-        uploadType: 'media',
-        media: { mimeType: 'application/json', body: content },
-      });
-    } else {
-      const metadata = { name: DRIVE_FILE_NAME, mimeType: 'application/json' };
-      const form = new FormData();
-      form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-      form.append('file', content);
-      await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true', {
-        method: 'POST',
-        headers: new Headers({ Authorization: `Bearer ${gapi.client.getToken().access_token}` }),
-        body: form,
-      });
-    }
-    setStatus('Drive sync complete.');
-  } catch (error) {
-    console.error(error);
-    setStatus(`Drive sync failed: ${error.message}`);
-  }
-}
-
-async function loadFromDrive() {
-  if (!ensureAuth()) return;
-  setStatus('Loading from Drive...');
-  try {
-    const fileId = await findDriveFile();
-    if (!fileId) {
-      setStatus('No Drive file found yet. Save once to create it.');
-      return;
-    }
-    const response = await gapi.client.drive.files.get({
-      fileId,
-      alt: 'media',
-    });
-    if (response.body) {
-      const parsed = JSON.parse(response.body);
-      if (parsed.lists) {
-        lists = parsed.lists;
-        persist();
-        renderLists();
-        setStatus('Lists updated from Drive.');
-      }
-    }
-  } catch (error) {
-    console.error(error);
-    setStatus(`Failed to load from Drive: ${error.message}`);
-  }
-}
-
-async function findDriveFile() {
-  const response = await gapi.client.drive.files.list({
-    q: `name='${DRIVE_FILE_NAME}'`,
-    spaces: 'drive',
-    fields: 'files(id, name)',
-  });
-  const file = response.result.files?.[0];
-  return file ? file.id : null;
-}
-
-function ensureAuth() {
-  const token = gapi.client.getToken(); // eslint-disable-line no-undef
-  if (!token) {
-    setStatus('Sign in with Google to use Drive sync.');
-    return false;
-  }
-  if (!elements.apiKey.value.trim() || !elements.clientId.value.trim()) {
-    setStatus('Add your API key and OAuth client ID.');
-    return false;
-  }
-  return true;
-}
-
-function setStatus(message) {
-  elements.syncStatus.textContent = message;
 }
