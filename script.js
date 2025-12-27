@@ -11,6 +11,8 @@ const elements = {
   listTemplate: document.getElementById('listTemplate'),
   itemTemplate: document.getElementById('itemTemplate'),
   downloadBackup: document.getElementById('downloadBackup'),
+  uploadBackup: document.getElementById('uploadBackup'),
+  uploadInput: document.getElementById('uploadInput'),
 };
 
 let lists = [];
@@ -77,6 +79,16 @@ function deleteListFromDB(id) {
   });
 }
 
+function clearDB() {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([STORE_NAME], 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    const request = store.clear();
+    request.onsuccess = () => resolve();
+    request.onerror = (event) => reject('Error clearing DB: ' + event.target.error);
+  });
+}
+
 function attachEvents() {
   elements.generateButton.addEventListener('click', async () => {
     const parsed = parseItems(elements.itemInput.value);
@@ -90,7 +102,7 @@ function attachEvents() {
       id: crypto.randomUUID(),
       title,
       createdAt: createdAt.toISOString(),
-      items: parsed.map((text) => ({ id: crypto.randomUUID(), text, done: false })),
+      items: parsed.map((text) => ({ id: crypto.randomUUID(), text, done: false, doneDate: null })),
     };
     lists.unshift(list);
     await saveListToDB(list);
@@ -105,6 +117,48 @@ function attachEvents() {
   });
 
   elements.downloadBackup.addEventListener('click', downloadBackup);
+
+  if (elements.uploadBackup) {
+    elements.uploadBackup.addEventListener('click', () => {
+      elements.uploadInput.click();
+    });
+  }
+
+  if (elements.uploadInput) {
+    elements.uploadInput.addEventListener('change', handleFileUpload);
+  }
+}
+
+async function handleFileUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!data.lists || !Array.isArray(data.lists)) {
+        alert('Invalid backup file format.');
+        return;
+      }
+
+      if (confirm('This will overwrite your existing lists. Do you want to continue?')) {
+        await clearDB();
+        lists = data.lists;
+        for (const list of lists) {
+          await saveListToDB(list);
+        }
+        renderLists();
+        alert('Backup restored successfully.');
+      }
+    } catch (error) {
+      console.error('Error parsing backup file:', error);
+      alert('Error parsing backup file.');
+    } finally {
+      event.target.value = ''; // Reset input
+    }
+  };
+  reader.readAsText(file);
 }
 
 async function downloadBackup() {
@@ -195,7 +249,11 @@ async function toggleItem(listId, itemId, done) {
   const list = lists[listIndex];
   const updatedList = {
     ...list,
-    items: list.items.map((item) => (item.id === itemId ? { ...item, done } : item))
+    items: list.items.map((item) => (item.id === itemId ? {
+      ...item,
+      done,
+      doneDate: done ? new Date().toISOString() : null
+    } : item))
   };
 
   lists[listIndex] = updatedList;
@@ -236,3 +294,11 @@ async function removeList(listId) {
   await deleteListFromDB(listId);
   renderLists();
 }
+
+export {
+  toggleItem,
+  handleFileUpload,
+  parseItems,
+  lists,
+  initApp
+};

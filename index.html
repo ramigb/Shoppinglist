@@ -7,13 +7,6 @@
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header class="top-bar">
-    <div>
-      <h1>Shopping List Generator</h1>
-      <p class="tagline">Parse comma or newline separated items into timestamped shopping lists. All data stays in your browser and can sync to Google Drive.</p>
-    </div>
-  </header>
-
   <main class="layout">
     <section class="panel">
       <h2>Create a list</h2>
@@ -27,13 +20,15 @@
         <button id="generateButton" class="primary">Create shopping list</button>
         <button id="clearInput" class="secondary">Clear</button>
       </div>
-      <p class="hint">Tip: Press “Create shopping list” to parse your items and store them locally. Use the Drive buttons above to sync.</p>
+      <p class="hint">Tip: Press “Create shopping list” to parse your items and store them locally.</p>
     </section>
 
     <section class="panel lists-panel">
       <div class="panel-heading">
         <h2>Your lists</h2>
         <div class="panel-actions">
+          <input type="file" id="uploadInput" accept=".json" style="display: none;">
+          <button id="uploadBackup" class="secondary">Upload Backup</button>
           <button id="downloadBackup" class="secondary">Download Backup</button>
         </div>
       </div>
