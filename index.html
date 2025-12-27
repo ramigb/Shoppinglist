@@ -1,44 +1,82 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Vanilla JS Google Drive Demo</title>
-  <link rel="stylesheet" href="styles.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shopping List Generator</title>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <header class="top-bar">
     <div>
-      <h1>Google Drive File Browser</h1>
-      <p class="tagline">Paste your Google OAuth Client ID and API Key to browse the 10 most recent Drive files created by this app.</p>
+      <h1>Shopping List Generator</h1>
+      <p class="tagline">Parse comma or newline separated items into timestamped shopping lists. All data stays in your browser and can sync to Google Drive.</p>
     </div>
     <div class="auth-controls">
       <label class="config-label" for="clientId">Google OAuth Client ID</label>
-      <input id="clientId" type="text" placeholder="Paste your OAuth Client ID" aria-label="Google OAuth Client ID" />
-
+      <input id="clientId" type="text" placeholder="Paste your OAuth Client ID" aria-label="Google OAuth Client ID">
       <label class="config-label" for="apiKey">Google API Key</label>
-      <input id="apiKey" type="text" placeholder="Paste your API Key" aria-label="Google API Key" />
-
+      <input id="apiKey" type="text" placeholder="Paste your API Key" aria-label="Google API Key">
       <div class="auth-buttons">
-        <button id="loginButton" class="primary">Login with Google</button>
-        <button id="logoutButton" class="secondary" hidden>Logout</button>
+        <button id="authorizeButton" class="primary">Sign in with Google</button>
+        <button id="signoutButton" class="secondary">Sign out</button>
       </div>
-      <p class="status" id="statusText">Waiting for credentials.</p>
+      <p class="status" id="syncStatus">Drive sync is idle.</p>
     </div>
   </header>
 
   <main class="layout">
+    <section class="panel">
+      <h2>Create a list</h2>
+      <label for="listTitle">List title (optional)</label>
+      <input id="listTitle" type="text" placeholder="Defaults to creation date and time">
+
+      <label for="itemInput">Items (new lines or commas)</label>
+      <textarea id="itemInput" rows="8" placeholder="Milk, Eggs, Coffee\nBread"></textarea>
+
+      <div class="actions">
+        <button id="generateButton" class="primary">Create shopping list</button>
+        <button id="clearInput" class="secondary">Clear</button>
+      </div>
+      <p class="hint">Tip: Press “Create shopping list” to parse your items and store them locally. Use the Drive buttons above to sync.</p>
+    </section>
+
     <section class="panel lists-panel">
       <div class="panel-heading">
-        <h2>Drive Files</h2>
-        <button id="refreshButton" class="primary" hidden>Refresh List</button>
+        <h2>Your lists</h2>
+        <div class="panel-actions">
+          <button id="syncDrive" class="primary">Sync to Drive</button>
+          <button id="loadDrive" class="secondary">Load from Drive</button>
+        </div>
       </div>
-      <div id="fileContainer" class="list-container" aria-live="polite">
-        <p class="hint">Sign in to load your most recent files.</p>
-      </div>
+      <div id="listContainer" class="list-container" aria-live="polite"></div>
     </section>
   </main>
 
-  <script type="module" src="main.js"></script>
+  <template id="listTemplate">
+    <article class="list-card">
+      <header class="list-header">
+        <div>
+          <p class="list-date"></p>
+          <h3 class="list-title"></h3>
+        </div>
+        <button class="ghost remove-list" aria-label="Delete list">✕</button>
+      </header>
+      <ul class="items"></ul>
+    </article>
+  </template>
+
+  <template id="itemTemplate">
+    <li class="item">
+      <label>
+        <input type="checkbox" class="item-checkbox">
+        <span class="item-text"></span>
+      </label>
+    </li>
+  </template>
+
+  <script src="https://apis.google.com/js/api.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script type="module" src="script.js"></script>
 </body>
 </html>
