@@ -43,9 +43,16 @@
           <p class="list-date"></p>
           <h3 class="list-title" contenteditable="true" spellcheck="false"></h3>
         </div>
-        <button class="ghost remove-list" aria-label="Delete list">✕</button>
+        <div class="list-actions">
+          <button class="ghost focus-list" aria-label="Focus mode">⤢</button>
+          <button class="ghost remove-list" aria-label="Delete list">✕</button>
+        </div>
       </header>
       <ul class="items"></ul>
+      <form class="add-item-form">
+        <input type="text" placeholder="Add item..." class="add-item-input">
+        <button type="submit" class="ghost add-item-btn">＋</button>
+      </form>
     </article>
   </template>
 

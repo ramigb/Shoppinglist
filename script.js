@@ -17,6 +17,7 @@ const elements = {
 
 let lists = [];
 let db;
+let activeFocusListId = null;
 
 initApp();
 
@@ -238,8 +239,64 @@ function renderLists() {
     const removeButton = node.querySelector('.remove-list');
     removeButton.addEventListener('click', () => removeList(list.id));
 
+    const focusButton = node.querySelector('.focus-list');
+
+    // Restore focus state if this list is active
+    if (list.id === activeFocusListId) {
+      const card = node.querySelector('.list-card');
+      card.classList.add('fullscreen');
+      focusButton.textContent = '✕';
+    }
+
+    focusButton.addEventListener('click', (e) => {
+      const card = e.target.closest('.list-card');
+      const isFullscreen = card.classList.toggle('fullscreen');
+
+      if (isFullscreen) {
+        activeFocusListId = list.id;
+        focusButton.textContent = '✕';
+      } else {
+        activeFocusListId = null;
+        focusButton.textContent = '⤢';
+      }
+    });
+
+    const addItemForm = node.querySelector('.add-item-form');
+    const addItemInput = node.querySelector('.add-item-input');
+    addItemForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const text = addItemInput.value.trim();
+      if (text) {
+        addItemToList(list.id, text);
+        addItemInput.value = '';
+      }
+    });
+
     elements.listContainer.appendChild(node);
   });
+}
+
+async function addItemToList(listId, text) {
+  const listIndex = lists.findIndex(l => l.id === listId);
+  if (listIndex === -1) return;
+
+  const list = lists[listIndex];
+  const newItem = {
+    id: crypto.randomUUID(),
+    text,
+    done: false,
+    doneDate: null
+  };
+
+  const updatedList = {
+    ...list,
+    items: [...list.items, newItem]
+  };
+
+  lists[listIndex] = updatedList;
+  await saveListToDB(updatedList);
+  // Re-render specifically this list or all lists. For simplicity, re-render all to keep state consistent
+  renderLists();
 }
 
 async function toggleItem(listId, itemId, done) {
