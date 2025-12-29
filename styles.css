@@ -54,7 +54,7 @@ h1, h2, h3 { margin: 0; }
 
 label { display: block; color: var(--muted); margin-bottom: 0.35rem; }
 
-input, textarea {
+input:not([type="checkbox"]):not([type="radio"]), textarea {
   width: 100%;
   background: #0b1324;
   border: 1px solid var(--border);
@@ -122,7 +122,7 @@ button:active { transform: translateY(0); }
 }
 
 .item label { display: flex; align-items: center; gap: 0.65rem; margin: 0; color: var(--text); flex-grow: 1; }
-.item-checkbox { width: 18px; height: 18px; }
+.item-checkbox { width: 18px; height: 18px; margin: 0; padding: 0; }
 
 /* SVG Icon alignment */
 button svg {
