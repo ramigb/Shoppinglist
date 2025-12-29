@@ -4,7 +4,8 @@ const STORE_NAME = 'lists';
 
 const ICONS = {
   minimize: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"></polyline><polyline points="20 10 14 10 14 4"></polyline><line x1="14" y1="10" x2="21" y2="3"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>',
-  maximize: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>'
+  maximize: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>',
+  share: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"></path><polyline points="16 6 12 2 8 6"></polyline><line x1="12" y1="2" x2="12" y2="15"></line></svg>'
 };
 
 const elements = {
@@ -30,6 +31,23 @@ async function initApp() {
   try {
     await initDB();
     lists = await getAllLists();
+
+    const params = new URLSearchParams(window.location.search);
+    const sharedData = params.get('share');
+    if (sharedData) {
+      const sharedList = decodeList(sharedData);
+      if (sharedList) {
+        if (confirm(`Import shared list '${sharedList.title}'?`)) {
+          lists.unshift(sharedList);
+          await saveListToDB(sharedList);
+          const newUrl = window.location.origin + window.location.pathname;
+          window.history.replaceState({}, document.title, newUrl);
+        }
+      } else {
+        alert('Invalid or corrupted shared list link.');
+      }
+    }
+
     lists.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     renderLists();
     attachEvents();
@@ -249,6 +267,9 @@ function renderLists() {
     const removeButton = node.querySelector('.remove-list');
     removeButton.addEventListener('click', () => removeList(list.id));
 
+    const shareButton = node.querySelector('.share-list');
+    shareButton.addEventListener('click', () => shareList(list));
+
     const focusButton = node.querySelector('.focus-list');
 
     // Restore focus state if this list is active
@@ -380,10 +401,59 @@ async function removeList(listId) {
   renderLists();
 }
 
+function shareList(list) {
+  const encoded = encodeList(list);
+  const url = `${window.location.origin}${window.location.pathname}?share=${encoded}`;
+  navigator.clipboard.writeText(url).then(() => {
+    alert('Link copied to clipboard!');
+  }).catch(err => {
+    console.error('Failed to copy: ', err);
+    alert('Failed to copy link to clipboard.');
+  });
+}
+
 export {
   toggleItem,
   handleFileUpload,
   parseItems,
   lists,
-  initApp
+  initApp,
+  encodeList,
+  decodeList
 };
+
+function encodeList(list) {
+  const minified = {
+    t: list.title,
+    i: list.items.map(item => ({ t: item.text, d: item.done ? 1 : 0 }))
+  };
+  const json = JSON.stringify(minified);
+  return btoa(unescape(encodeURIComponent(json)));
+}
+
+function decodeList(encoded) {
+  try {
+    const json = decodeURIComponent(escape(atob(encoded)));
+    const minified = JSON.parse(json);
+
+    // Validate structure
+    if (!minified.t || !Array.isArray(minified.i)) {
+      throw new Error('Invalid structure');
+    }
+
+    return {
+      id: crypto.randomUUID(),
+      title: minified.t,
+      createdAt: new Date().toISOString(),
+      items: minified.i.map(item => ({
+        id: crypto.randomUUID(),
+        text: item.t,
+        done: !!item.d,
+        doneDate: null
+      }))
+    };
+  } catch (e) {
+    console.error('Failed to decode:', e);
+    return null;
+  }
+}
