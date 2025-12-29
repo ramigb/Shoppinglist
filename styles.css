@@ -128,3 +128,74 @@ button:active { transform: translateY(0); }
 @media (max-width: 960px) {
   .layout { grid-template-columns: 1fr; }
 }
+
+/* Add Item Form */
+.add-item-form {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.add-item-input {
+  margin-bottom: 0;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+}
+
+.add-item-btn {
+  font-size: 1.25rem;
+  padding: 0 0.75rem;
+  line-height: 1;
+}
+
+/* List Actions Header */
+.list-actions {
+  display: flex;
+  gap: 0.25rem;
+}
+
+/* Fullscreen Focus Mode */
+.list-card.fullscreen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1000;
+  border-radius: 0;
+  border: none;
+  margin: 0;
+  padding: 2rem;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.list-card.fullscreen .list-header {
+  margin-bottom: 2rem;
+}
+
+.list-card.fullscreen .items {
+  flex: 1;
+  overflow-y: auto;
+  /* Make items larger/centered in focus mode */
+  max-width: 800px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.list-card.fullscreen .add-item-form {
+  max-width: 800px;
+  width: 100%;
+  margin: 1rem auto 0;
+}
+
+/* Hide other UI in fullscreen is handled by z-index and coverage,
+   but we might want to darken the background if we don't make the card bg opaque enough */
+
+/* Hide remove button in fullscreen to avoid accidents */
+.list-card.fullscreen .remove-list {
+  display: none;
+}
