@@ -1,0 +1,16 @@
+{
+  "name": "Shopping List Generator",
+  "short_name": "ShoppingList",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "author": "Rami GB",
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "325x360",
+      "type": "image/png"
+    }
+  ]
+}
