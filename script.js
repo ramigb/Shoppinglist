@@ -2,6 +2,11 @@ const DB_NAME = 'ShoppingListDB';
 const DB_VERSION = 1;
 const STORE_NAME = 'lists';
 
+const ICONS = {
+  minimize: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"></polyline><polyline points="20 10 14 10 14 4"></polyline><line x1="14" y1="10" x2="21" y2="3"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>',
+  maximize: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>'
+};
+
 const elements = {
   listTitle: document.getElementById('listTitle'),
   itemInput: document.getElementById('itemInput'),
@@ -233,6 +238,11 @@ function renderLists() {
         }
       });
 
+      const deleteBtn = itemNode.querySelector('.delete-item');
+      if (deleteBtn) {
+        deleteBtn.addEventListener('click', () => deleteItem(list.id, item.id));
+      }
+
       ul.appendChild(itemNode);
     });
 
@@ -245,7 +255,7 @@ function renderLists() {
     if (list.id === activeFocusListId) {
       const card = node.querySelector('.list-card');
       card.classList.add('fullscreen');
-      focusButton.textContent = '✕';
+      focusButton.innerHTML = ICONS.minimize;
     }
 
     focusButton.addEventListener('click', (e) => {
@@ -254,10 +264,10 @@ function renderLists() {
 
       if (isFullscreen) {
         activeFocusListId = list.id;
-        focusButton.textContent = '✕';
+        focusButton.innerHTML = ICONS.minimize;
       } else {
         activeFocusListId = null;
-        focusButton.textContent = '⤢';
+        focusButton.innerHTML = ICONS.maximize;
       }
     });
 
@@ -346,7 +356,25 @@ async function updateItemText(listId, itemId, newText) {
   await saveListToDB(updatedList);
 }
 
+async function deleteItem(listId, itemId) {
+  if (!confirm('Are you sure you want to delete this item?')) return;
+
+  const listIndex = lists.findIndex(l => l.id === listId);
+  if (listIndex === -1) return;
+
+  const list = lists[listIndex];
+  const updatedList = {
+    ...list,
+    items: list.items.filter((item) => item.id !== itemId)
+  };
+
+  lists[listIndex] = updatedList;
+  await saveListToDB(updatedList);
+  renderLists();
+}
+
 async function removeList(listId) {
+  if (!confirm('Are you sure you want to delete this list?')) return;
   lists = lists.filter((list) => list.id !== listId);
   await deleteListFromDB(listId);
   renderLists();
