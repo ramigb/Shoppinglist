@@ -1,14 +1,14 @@
 export default function AboutPage() {
   return (
-    <div className="prose dark:prose-invert max-w-none">
-      <h1>About Us</h1>
-      <p>
+    <div className="max-w-3xl mx-auto py-6">
+      <h1 className="text-3xl font-bold mb-6">About</h1>
+      <p className="mb-6 text-lg text-muted-foreground">
         A lightweight, single-page shopping list builder that parses comma or
         newline separated items into timestamped todo-style lists. Lists are
         stored locally in your browser.
       </p>
-      <h3>Features</h3>
-      <ul>
+      <h3 className="text-xl font-semibold mb-4">Features</h3>
+      <ul className="list-disc pl-6 space-y-2">
         <li>
           <strong>Easy Entry</strong>: Paste items separated by commas or new
           lines to instantly build a shopping list.
