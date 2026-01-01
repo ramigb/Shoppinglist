@@ -13,9 +13,32 @@ A lightweight, single-page shopping list builder that parses comma or newline se
 - **PWA Support**: Install as an app on your desktop or mobile device.
 - **Backup & Restore**: Export and import your lists via JSON file.
 
+## Tech Stack
+- **Framework**: React 19, Vite, TypeScript
+- **Styling**: Tailwind CSS v4, Shadcn UI
+- **Routing**: React Router DOM
+- **State/Storage**: IndexedDB (via `idb`)
+
 ## Running the app
-Open `index.html` in a browser. Everything is handled client-side; no build tools are required.
-You can also install it as a PWA on supported browsers.
+
+To run the application locally, you'll need Node.js installed.
+
+1.  **Install dependencies:**
+    ```bash
+    npm install
+    ```
+
+2.  **Start the development server:**
+    ```bash
+    npm run dev
+    ```
+    Open your browser and navigate to the URL shown in the terminal (usually `http://localhost:5173`).
+
+3.  **Build for production:**
+    ```bash
+    npm run build
+    ```
+    The build artifacts will be stored in the `dist/` directory.
 
 ## Data model
 The backup file stores a JSON payload:
