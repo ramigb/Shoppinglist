@@ -20,11 +20,19 @@ const elements = {
   downloadBackup: document.getElementById('downloadBackup'),
   uploadBackup: document.getElementById('uploadBackup'),
   uploadInput: document.getElementById('uploadInput'),
+  createListBtn: document.getElementById('createListBtn'),
+  createListModal: document.getElementById('create-list-modal'),
+  closeModal: document.getElementById('closeModal'),
+  homeListContainer: document.getElementById('home-list-container'),
+  sortSelect: document.getElementById('sortSelect'),
+  dateFilter: document.getElementById('dateFilter'),
 };
 
 let lists = [];
 let db;
 let activeFocusListId = null;
+let currentSort = 'newest';
+let currentDateFilter = 'all';
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -128,6 +136,20 @@ function clearDB() {
 }
 
 function attachEvents() {
+  elements.createListBtn.addEventListener('click', () => {
+    elements.createListModal.showModal();
+  });
+
+  elements.closeModal.addEventListener('click', () => {
+    elements.createListModal.close();
+  });
+
+  elements.createListModal.addEventListener('click', (e) => {
+    if (e.target === elements.createListModal) {
+      elements.createListModal.close();
+    }
+  });
+
   elements.generateButton.addEventListener('click', async () => {
     const parsed = parseItems(elements.itemInput.value);
     if (!parsed.length) {
@@ -150,6 +172,10 @@ function attachEvents() {
     renderLists();
     elements.itemInput.value = '';
     elements.listTitle.value = '';
+    elements.createListModal.close();
+
+    // Switch to Home page to see the new list
+    document.querySelector('[data-target="home-page"]').click();
   });
 
   elements.clearInput.addEventListener('click', () => {
@@ -167,6 +193,20 @@ function attachEvents() {
 
   if (elements.uploadInput) {
     elements.uploadInput.addEventListener('change', handleFileUpload);
+  }
+
+  if (elements.sortSelect) {
+    elements.sortSelect.addEventListener('change', (e) => {
+      currentSort = e.target.value;
+      renderLists();
+    });
+  }
+
+  if (elements.dateFilter) {
+    elements.dateFilter.addEventListener('change', (e) => {
+      currentDateFilter = e.target.value;
+      renderLists();
+    });
   }
 }
 
@@ -232,102 +272,179 @@ function formatDate(date) {
   });
 }
 
-function renderLists() {
-  elements.listContainer.innerHTML = '';
-  if (!lists.length) {
-    const empty = document.createElement('p');
-    empty.textContent = 'No shopping lists yet.';
-    empty.className = 'hint';
-    elements.listContainer.appendChild(empty);
-    return;
-  }
+function createListNode(list) {
+  const node = elements.listTemplate.content.cloneNode(true);
+  const titleNode = node.querySelector('.list-title');
+  titleNode.textContent = list.title;
+  titleNode.addEventListener('blur', () => updateListTitle(list.id, titleNode.textContent));
+  titleNode.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      titleNode.blur();
+    }
+  });
 
-  lists.forEach((list) => {
-    const node = elements.listTemplate.content.cloneNode(true);
-    const titleNode = node.querySelector('.list-title');
-    titleNode.textContent = list.title;
-    titleNode.addEventListener('blur', () => updateListTitle(list.id, titleNode.textContent));
-    titleNode.addEventListener('keydown', (e) => {
+  node.querySelector('.list-date').textContent = `Created ${formatDate(new Date(list.createdAt))}`;
+
+  const ul = node.querySelector('.items');
+  list.items.forEach((item) => {
+    const itemNode = elements.itemTemplate.content.cloneNode(true);
+    const checkbox = itemNode.querySelector('.item-checkbox');
+    const text = itemNode.querySelector('.item-text');
+    checkbox.checked = item.done;
+    text.textContent = item.text;
+    checkbox.addEventListener('change', () => toggleItem(list.id, item.id, checkbox.checked));
+
+    text.addEventListener('blur', () => updateItemText(list.id, item.id, text.textContent));
+    text.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        titleNode.blur();
+        text.blur();
       }
     });
 
-    node.querySelector('.list-date').textContent = `Created ${formatDate(new Date(list.createdAt))}`;
-
-    const ul = node.querySelector('.items');
-    list.items.forEach((item) => {
-      const itemNode = elements.itemTemplate.content.cloneNode(true);
-      const checkbox = itemNode.querySelector('.item-checkbox');
-      const text = itemNode.querySelector('.item-text');
-      checkbox.checked = item.done;
-      text.textContent = item.text;
-      checkbox.addEventListener('change', () => toggleItem(list.id, item.id, checkbox.checked));
-
-      text.addEventListener('blur', () => updateItemText(list.id, item.id, text.textContent));
-      text.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          text.blur();
-        }
-      });
-
-      const deleteBtn = itemNode.querySelector('.delete-item');
-      if (deleteBtn) {
-        deleteBtn.addEventListener('click', () => deleteItem(list.id, item.id));
-      }
-
-      ul.appendChild(itemNode);
-    });
-
-    const removeButton = node.querySelector('.remove-list');
-    removeButton.addEventListener('click', () => removeList(list.id));
-
-    const shareButton = node.querySelector('.share-list');
-    shareButton.addEventListener('click', () => shareList(list));
-
-    const focusButton = node.querySelector('.focus-list');
-
-    // Restore focus state if this list is active
-    if (list.id === activeFocusListId) {
-      const card = node.querySelector('.list-card');
-      card.classList.add('fullscreen');
-      focusButton.innerHTML = ICONS.minimize;
+    const deleteBtn = itemNode.querySelector('.delete-item');
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', () => deleteItem(list.id, item.id));
     }
 
-    focusButton.addEventListener('click', (e) => {
-      const card = e.target.closest('.list-card');
-      const isFullscreen = card.classList.toggle('fullscreen');
-
-      if (isFullscreen) {
-        activeFocusListId = list.id;
-        focusButton.innerHTML = ICONS.minimize;
-      } else {
-        activeFocusListId = null;
-        focusButton.innerHTML = ICONS.maximize;
-      }
-    });
-
-    const addItemForm = node.querySelector('.add-item-form');
-    const addItemInput = node.querySelector('.add-item-input');
-
-    setupAutocomplete(addItemInput, (selectedValue) => {
-        addItemToList(list.id, selectedValue);
-        addItemInput.value = '';
-    });
-
-    addItemForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const text = addItemInput.value.trim();
-      if (text) {
-        addItemToList(list.id, text);
-        addItemInput.value = '';
-      }
-    });
-
-    elements.listContainer.appendChild(node);
+    ul.appendChild(itemNode);
   });
+
+  const removeButton = node.querySelector('.remove-list');
+  removeButton.addEventListener('click', () => removeList(list.id));
+
+  const shareButton = node.querySelector('.share-list');
+  shareButton.addEventListener('click', () => shareList(list));
+
+  const focusButton = node.querySelector('.focus-list');
+
+  // Restore focus state if this list is active
+  if (list.id === activeFocusListId) {
+    const card = node.querySelector('.list-card');
+    card.classList.add('fullscreen');
+    focusButton.innerHTML = ICONS.minimize;
+  }
+
+  focusButton.addEventListener('click', (e) => {
+    const card = e.target.closest('.list-card');
+    const isFullscreen = card.classList.toggle('fullscreen');
+
+    if (isFullscreen) {
+      activeFocusListId = list.id;
+      focusButton.innerHTML = ICONS.minimize;
+    } else {
+      activeFocusListId = null;
+      focusButton.innerHTML = ICONS.maximize;
+    }
+  });
+
+  const addItemForm = node.querySelector('.add-item-form');
+  const addItemInput = node.querySelector('.add-item-input');
+
+  setupAutocomplete(addItemInput, (selectedValue) => {
+      addItemToList(list.id, selectedValue);
+      addItemInput.value = '';
+  });
+
+  addItemForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const text = addItemInput.value.trim();
+    if (text) {
+      addItemToList(list.id, text);
+      addItemInput.value = '';
+    }
+  });
+
+  return node;
+}
+
+function getUniqueDates(lists) {
+    const dates = new Set();
+    lists.forEach(list => {
+        const dateStr = new Date(list.createdAt).toLocaleDateString();
+        dates.add(dateStr);
+    });
+    return Array.from(dates).sort((a, b) => new Date(b) - new Date(a)); // Descending dates
+}
+
+function updateDateFilterOptions() {
+    if (!elements.dateFilter) return;
+
+    // Save current selection if possible
+    const currentSelection = elements.dateFilter.value;
+
+    // Clear options except "All Dates"
+    elements.dateFilter.innerHTML = '<option value="all">All Dates</option>';
+
+    const uniqueDates = getUniqueDates(lists);
+    uniqueDates.forEach(date => {
+        const option = document.createElement('option');
+        option.value = date;
+        option.textContent = date;
+        elements.dateFilter.appendChild(option);
+    });
+
+    // Restore selection if it still exists, otherwise reset to 'all'
+    if (uniqueDates.includes(currentSelection)) {
+        elements.dateFilter.value = currentSelection;
+    } else {
+        currentDateFilter = 'all';
+        elements.dateFilter.value = 'all';
+    }
+}
+
+function renderLists() {
+  updateDateFilterOptions();
+
+  // --- Render Home (Last created list only) ---
+  // Always shows the absolute latest created list, ignoring filters
+  elements.homeListContainer.innerHTML = '';
+  if (!lists.length) {
+    const empty = document.createElement('p');
+    empty.textContent = 'No lists created yet. Click "Create List" to get started!';
+    empty.className = 'hint';
+    elements.homeListContainer.appendChild(empty);
+  } else {
+    // lists are maintained in creation order (desc) in global state for simplicity of adding new items
+    // but to be safe, we can find max createdAt
+    const latestList = lists.reduce((prev, current) => (new Date(prev.createdAt) > new Date(current.createdAt)) ? prev : current, lists[0]);
+    elements.homeListContainer.appendChild(createListNode(latestList));
+  }
+
+  // --- Render My Lists (Filtered & Sorted) ---
+  elements.listContainer.innerHTML = '';
+
+  let processedLists = [...lists];
+
+  // 1. Filter
+  if (currentDateFilter !== 'all') {
+      processedLists = processedLists.filter(list => {
+          return new Date(list.createdAt).toLocaleDateString() === currentDateFilter;
+      });
+  }
+
+  // 2. Sort
+  processedLists.sort((a, b) => {
+      const dateA = new Date(a.createdAt);
+      const dateB = new Date(b.createdAt);
+      if (currentSort === 'newest') {
+          return dateB - dateA;
+      } else {
+          return dateA - dateB;
+      }
+  });
+
+  if (!processedLists.length) {
+    const empty = document.createElement('p');
+    empty.textContent = 'No shopping lists match your filters.';
+    empty.className = 'hint';
+    elements.listContainer.appendChild(empty);
+  } else {
+    processedLists.forEach((list) => {
+      elements.listContainer.appendChild(createListNode(list));
+    });
+  }
 }
 
 async function addItemToList(listId, text) {
