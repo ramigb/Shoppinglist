@@ -5,6 +5,7 @@ import tailwindcss from "@tailwindcss/vite"
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
+  base: '/Shoppinglist/',
   plugins: [
     react(),
     tailwindcss(),
@@ -18,8 +19,8 @@ export default defineConfig({
         theme_color: '#ffffff',
         background_color: '#ffffff',
         display: 'standalone',
-        scope: '/',
-        start_url: '/',
+        scope: '/Shoppinglist/',
+        start_url: '/Shoppinglist/',
         icons: [
           {
             src: 'icon.png',
