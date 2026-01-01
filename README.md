@@ -1,35 +1,73 @@
-# Shopping List Generator
+# React + TypeScript + Vite
 
-A lightweight, single-page shopping list builder that parses comma or newline separated items into timestamped todo-style lists. Lists are stored locally in your browser.
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
-## Features
-- **Easy Entry**: Paste items separated by commas or new lines to instantly build a shopping list.
-- **Auto-Titles**: Automatic list title using the creation date/time (or add your own title).
-- **Check & Edit**: Check items off like a todo list. Click on any list title or item text to edit it inline.
-- **Granular Control**: Add new items to existing lists or delete individual items.
-- **Focus Mode**: Expand a single list to full screen for distraction-free shopping.
-- **Sharing**: Share your list with others via a generated URL.
-- **Persistence**: Persists to `localStorage` via IndexedDB.
-- **PWA Support**: Install as an app on your desktop or mobile device.
-- **Backup & Restore**: Export and import your lists via JSON file.
+Currently, two official plugins are available:
 
-## Running the app
-Open `index.html` in a browser. Everything is handled client-side; no build tools are required.
-You can also install it as a PWA on supported browsers.
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
 
-## Data model
-The backup file stores a JSON payload:
-```json
-{
-  "lists": [
-    {
-      "id": "uuid",
-      "title": "Shopping list title",
-      "createdAt": "2024-01-01T12:34:56.000Z",
-      "items": [
-        { "id": "uuid", "text": "Milk", "done": false, "doneDate": null }
-      ]
-    }
-  ]
-}
+## React Compiler
+
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+
+## Expanding the ESLint configuration
+
+If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+
+```js
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      // Other configs...
+
+      // Remove tseslint.configs.recommended and replace with this
+      tseslint.configs.recommendedTypeChecked,
+      // Alternatively, use this for stricter rules
+      tseslint.configs.strictTypeChecked,
+      // Optionally, add this for stylistic rules
+      tseslint.configs.stylisticTypeChecked,
+
+      // Other configs...
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.node.json', './tsconfig.app.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+      // other options...
+    },
+  },
+])
+```
+
+You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+
+```js
+// eslint.config.js
+import reactX from 'eslint-plugin-react-x'
+import reactDom from 'eslint-plugin-react-dom'
+
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      // Other configs...
+      // Enable lint rules for React
+      reactX.configs['recommended-typescript'],
+      // Enable lint rules for React DOM
+      reactDom.configs.recommended,
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.node.json', './tsconfig.app.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+      // other options...
+    },
+  },
+])
 ```
