@@ -20,6 +20,10 @@ const elements = {
   downloadBackup: document.getElementById('downloadBackup'),
   uploadBackup: document.getElementById('uploadBackup'),
   uploadInput: document.getElementById('uploadInput'),
+  createListBtn: document.getElementById('createListBtn'),
+  createListModal: document.getElementById('create-list-modal'),
+  closeModal: document.getElementById('closeModal'),
+  homeListContainer: document.getElementById('home-list-container'),
 };
 
 let lists = [];
@@ -128,6 +132,20 @@ function clearDB() {
 }
 
 function attachEvents() {
+  elements.createListBtn.addEventListener('click', () => {
+    elements.createListModal.showModal();
+  });
+
+  elements.closeModal.addEventListener('click', () => {
+    elements.createListModal.close();
+  });
+
+  elements.createListModal.addEventListener('click', (e) => {
+    if (e.target === elements.createListModal) {
+      elements.createListModal.close();
+    }
+  });
+
   elements.generateButton.addEventListener('click', async () => {
     const parsed = parseItems(elements.itemInput.value);
     if (!parsed.length) {
@@ -150,6 +168,10 @@ function attachEvents() {
     renderLists();
     elements.itemInput.value = '';
     elements.listTitle.value = '';
+    elements.createListModal.close();
+
+    // Switch to Home page to see the new list
+    document.querySelector('[data-target="home-page"]').click();
   });
 
   elements.clearInput.addEventListener('click', () => {
@@ -232,102 +254,118 @@ function formatDate(date) {
   });
 }
 
+function createListNode(list) {
+  const node = elements.listTemplate.content.cloneNode(true);
+  const titleNode = node.querySelector('.list-title');
+  titleNode.textContent = list.title;
+  titleNode.addEventListener('blur', () => updateListTitle(list.id, titleNode.textContent));
+  titleNode.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      titleNode.blur();
+    }
+  });
+
+  node.querySelector('.list-date').textContent = `Created ${formatDate(new Date(list.createdAt))}`;
+
+  const ul = node.querySelector('.items');
+  list.items.forEach((item) => {
+    const itemNode = elements.itemTemplate.content.cloneNode(true);
+    const checkbox = itemNode.querySelector('.item-checkbox');
+    const text = itemNode.querySelector('.item-text');
+    checkbox.checked = item.done;
+    text.textContent = item.text;
+    checkbox.addEventListener('change', () => toggleItem(list.id, item.id, checkbox.checked));
+
+    text.addEventListener('blur', () => updateItemText(list.id, item.id, text.textContent));
+    text.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        text.blur();
+      }
+    });
+
+    const deleteBtn = itemNode.querySelector('.delete-item');
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', () => deleteItem(list.id, item.id));
+    }
+
+    ul.appendChild(itemNode);
+  });
+
+  const removeButton = node.querySelector('.remove-list');
+  removeButton.addEventListener('click', () => removeList(list.id));
+
+  const shareButton = node.querySelector('.share-list');
+  shareButton.addEventListener('click', () => shareList(list));
+
+  const focusButton = node.querySelector('.focus-list');
+
+  // Restore focus state if this list is active
+  if (list.id === activeFocusListId) {
+    const card = node.querySelector('.list-card');
+    card.classList.add('fullscreen');
+    focusButton.innerHTML = ICONS.minimize;
+  }
+
+  focusButton.addEventListener('click', (e) => {
+    const card = e.target.closest('.list-card');
+    const isFullscreen = card.classList.toggle('fullscreen');
+
+    if (isFullscreen) {
+      activeFocusListId = list.id;
+      focusButton.innerHTML = ICONS.minimize;
+    } else {
+      activeFocusListId = null;
+      focusButton.innerHTML = ICONS.maximize;
+    }
+  });
+
+  const addItemForm = node.querySelector('.add-item-form');
+  const addItemInput = node.querySelector('.add-item-input');
+
+  setupAutocomplete(addItemInput, (selectedValue) => {
+      addItemToList(list.id, selectedValue);
+      addItemInput.value = '';
+  });
+
+  addItemForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const text = addItemInput.value.trim();
+    if (text) {
+      addItemToList(list.id, text);
+      addItemInput.value = '';
+    }
+  });
+
+  return node;
+}
+
 function renderLists() {
+  // Render My Lists (All lists)
   elements.listContainer.innerHTML = '';
   if (!lists.length) {
     const empty = document.createElement('p');
     empty.textContent = 'No shopping lists yet.';
     empty.className = 'hint';
     elements.listContainer.appendChild(empty);
-    return;
+  } else {
+    lists.forEach((list) => {
+      elements.listContainer.appendChild(createListNode(list));
+    });
   }
 
-  lists.forEach((list) => {
-    const node = elements.listTemplate.content.cloneNode(true);
-    const titleNode = node.querySelector('.list-title');
-    titleNode.textContent = list.title;
-    titleNode.addEventListener('blur', () => updateListTitle(list.id, titleNode.textContent));
-    titleNode.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        titleNode.blur();
-      }
-    });
-
-    node.querySelector('.list-date').textContent = `Created ${formatDate(new Date(list.createdAt))}`;
-
-    const ul = node.querySelector('.items');
-    list.items.forEach((item) => {
-      const itemNode = elements.itemTemplate.content.cloneNode(true);
-      const checkbox = itemNode.querySelector('.item-checkbox');
-      const text = itemNode.querySelector('.item-text');
-      checkbox.checked = item.done;
-      text.textContent = item.text;
-      checkbox.addEventListener('change', () => toggleItem(list.id, item.id, checkbox.checked));
-
-      text.addEventListener('blur', () => updateItemText(list.id, item.id, text.textContent));
-      text.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          text.blur();
-        }
-      });
-
-      const deleteBtn = itemNode.querySelector('.delete-item');
-      if (deleteBtn) {
-        deleteBtn.addEventListener('click', () => deleteItem(list.id, item.id));
-      }
-
-      ul.appendChild(itemNode);
-    });
-
-    const removeButton = node.querySelector('.remove-list');
-    removeButton.addEventListener('click', () => removeList(list.id));
-
-    const shareButton = node.querySelector('.share-list');
-    shareButton.addEventListener('click', () => shareList(list));
-
-    const focusButton = node.querySelector('.focus-list');
-
-    // Restore focus state if this list is active
-    if (list.id === activeFocusListId) {
-      const card = node.querySelector('.list-card');
-      card.classList.add('fullscreen');
-      focusButton.innerHTML = ICONS.minimize;
-    }
-
-    focusButton.addEventListener('click', (e) => {
-      const card = e.target.closest('.list-card');
-      const isFullscreen = card.classList.toggle('fullscreen');
-
-      if (isFullscreen) {
-        activeFocusListId = list.id;
-        focusButton.innerHTML = ICONS.minimize;
-      } else {
-        activeFocusListId = null;
-        focusButton.innerHTML = ICONS.maximize;
-      }
-    });
-
-    const addItemForm = node.querySelector('.add-item-form');
-    const addItemInput = node.querySelector('.add-item-input');
-
-    setupAutocomplete(addItemInput, (selectedValue) => {
-        addItemToList(list.id, selectedValue);
-        addItemInput.value = '';
-    });
-
-    addItemForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const text = addItemInput.value.trim();
-      if (text) {
-        addItemToList(list.id, text);
-        addItemInput.value = '';
-      }
-    });
-
-    elements.listContainer.appendChild(node);
-  });
+  // Render Home (Last created list only)
+  elements.homeListContainer.innerHTML = '';
+  if (!lists.length) {
+    const empty = document.createElement('p');
+    empty.textContent = 'No lists created yet. Click "Create List" to get started!';
+    empty.className = 'hint';
+    elements.homeListContainer.appendChild(empty);
+  } else {
+    // lists are already sorted by date desc in initApp/addList
+    elements.homeListContainer.appendChild(createListNode(lists[0]));
+  }
 }
 
 async function addItemToList(listId, text) {
