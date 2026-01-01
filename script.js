@@ -24,11 +24,15 @@ const elements = {
   createListModal: document.getElementById('create-list-modal'),
   closeModal: document.getElementById('closeModal'),
   homeListContainer: document.getElementById('home-list-container'),
+  sortSelect: document.getElementById('sortSelect'),
+  dateFilter: document.getElementById('dateFilter'),
 };
 
 let lists = [];
 let db;
 let activeFocusListId = null;
+let currentSort = 'newest';
+let currentDateFilter = 'all';
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -190,6 +194,20 @@ function attachEvents() {
   if (elements.uploadInput) {
     elements.uploadInput.addEventListener('change', handleFileUpload);
   }
+
+  if (elements.sortSelect) {
+    elements.sortSelect.addEventListener('change', (e) => {
+      currentSort = e.target.value;
+      renderLists();
+    });
+  }
+
+  if (elements.dateFilter) {
+    elements.dateFilter.addEventListener('change', (e) => {
+      currentDateFilter = e.target.value;
+      renderLists();
+    });
+  }
 }
 
 async function handleFileUpload(event) {
@@ -341,21 +359,46 @@ function createListNode(list) {
   return node;
 }
 
-function renderLists() {
-  // Render My Lists (All lists)
-  elements.listContainer.innerHTML = '';
-  if (!lists.length) {
-    const empty = document.createElement('p');
-    empty.textContent = 'No shopping lists yet.';
-    empty.className = 'hint';
-    elements.listContainer.appendChild(empty);
-  } else {
-    lists.forEach((list) => {
-      elements.listContainer.appendChild(createListNode(list));
+function getUniqueDates(lists) {
+    const dates = new Set();
+    lists.forEach(list => {
+        const dateStr = new Date(list.createdAt).toLocaleDateString();
+        dates.add(dateStr);
     });
-  }
+    return Array.from(dates).sort((a, b) => new Date(b) - new Date(a)); // Descending dates
+}
 
-  // Render Home (Last created list only)
+function updateDateFilterOptions() {
+    if (!elements.dateFilter) return;
+
+    // Save current selection if possible
+    const currentSelection = elements.dateFilter.value;
+
+    // Clear options except "All Dates"
+    elements.dateFilter.innerHTML = '<option value="all">All Dates</option>';
+
+    const uniqueDates = getUniqueDates(lists);
+    uniqueDates.forEach(date => {
+        const option = document.createElement('option');
+        option.value = date;
+        option.textContent = date;
+        elements.dateFilter.appendChild(option);
+    });
+
+    // Restore selection if it still exists, otherwise reset to 'all'
+    if (uniqueDates.includes(currentSelection)) {
+        elements.dateFilter.value = currentSelection;
+    } else {
+        currentDateFilter = 'all';
+        elements.dateFilter.value = 'all';
+    }
+}
+
+function renderLists() {
+  updateDateFilterOptions();
+
+  // --- Render Home (Last created list only) ---
+  // Always shows the absolute latest created list, ignoring filters
   elements.homeListContainer.innerHTML = '';
   if (!lists.length) {
     const empty = document.createElement('p');
@@ -363,8 +406,44 @@ function renderLists() {
     empty.className = 'hint';
     elements.homeListContainer.appendChild(empty);
   } else {
-    // lists are already sorted by date desc in initApp/addList
-    elements.homeListContainer.appendChild(createListNode(lists[0]));
+    // lists are maintained in creation order (desc) in global state for simplicity of adding new items
+    // but to be safe, we can find max createdAt
+    const latestList = lists.reduce((prev, current) => (new Date(prev.createdAt) > new Date(current.createdAt)) ? prev : current, lists[0]);
+    elements.homeListContainer.appendChild(createListNode(latestList));
+  }
+
+  // --- Render My Lists (Filtered & Sorted) ---
+  elements.listContainer.innerHTML = '';
+
+  let processedLists = [...lists];
+
+  // 1. Filter
+  if (currentDateFilter !== 'all') {
+      processedLists = processedLists.filter(list => {
+          return new Date(list.createdAt).toLocaleDateString() === currentDateFilter;
+      });
+  }
+
+  // 2. Sort
+  processedLists.sort((a, b) => {
+      const dateA = new Date(a.createdAt);
+      const dateB = new Date(b.createdAt);
+      if (currentSort === 'newest') {
+          return dateB - dateA;
+      } else {
+          return dateA - dateB;
+      }
+  });
+
+  if (!processedLists.length) {
+    const empty = document.createElement('p');
+    empty.textContent = 'No shopping lists match your filters.';
+    empty.className = 'hint';
+    elements.listContainer.appendChild(empty);
+  } else {
+    processedLists.forEach((list) => {
+      elements.listContainer.appendChild(createListNode(list));
+    });
   }
 }
 
