@@ -4,6 +4,7 @@ import { Plus, Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { CreateListDialog } from "@/components/custom/CreateListDialog";
+import { ModeToggle } from "@/components/mode-toggle";
 import {
   Sheet,
   SheetContent,
@@ -61,16 +62,21 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       {item.label}
                     </Link>
                   ))}
-                  <Button
-                    size="sm"
-                    className="w-full justify-start"
-                    onClick={() => {
-                      setIsCreateOpen(true);
-                      setIsSheetOpen(false);
-                    }}
-                  >
-                    <Plus className="mr-2 h-4 w-4" /> Create List
-                  </Button>
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      size="sm"
+                      className="flex-1 justify-start"
+                      onClick={() => {
+                        setIsCreateOpen(true);
+                        setIsSheetOpen(false);
+                      }}
+                    >
+                      <Plus className="mr-2 h-4 w-4" /> Create List
+                    </Button>
+                  </div>
+                  <div className="pt-2">
+                     <ModeToggle />
+                  </div>
                 </div>
               </SheetContent>
             </Sheet>
@@ -97,10 +103,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
             ))}
           </nav>
 
-          <div className="ml-auto hidden md:block">
+          <div className="ml-auto hidden md:flex items-center space-x-2">
             <Button size="sm" onClick={() => setIsCreateOpen(true)}>
               <Plus className="mr-2 h-4 w-4" /> Create List
             </Button>
+            <ModeToggle />
           </div>
         </div>
       </header>
