@@ -1,6 +1,7 @@
 const DB_NAME = 'ShoppingListDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = 'lists';
+const ITEMS_STORE_NAME = 'items';
 
 const ICONS = {
   minimize: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 14 10 14 10 20"></polyline><polyline points="20 10 14 10 14 4"></polyline><line x1="14" y1="10" x2="21" y2="3"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>',
@@ -59,6 +60,7 @@ async function initApp() {
     lists.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     renderLists();
     attachEvents();
+    setupNavigation();
   } catch (error) {
     console.error('Failed to initialize app:', error);
   }
@@ -76,6 +78,10 @@ function initDB() {
       const db = event.target.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(ITEMS_STORE_NAME)) {
+        const itemsStore = db.createObjectStore(ITEMS_STORE_NAME, { keyPath: 'id' });
+        itemsStore.createIndex('name', 'name', { unique: false });
       }
     };
   });
@@ -138,6 +144,9 @@ function attachEvents() {
     };
     lists.unshift(list);
     await saveListToDB(list);
+    for (const text of parsed) {
+      await saveItemToGlobalStore(text);
+    }
     renderLists();
     elements.itemInput.value = '';
     elements.listTitle.value = '';
@@ -302,6 +311,12 @@ function renderLists() {
 
     const addItemForm = node.querySelector('.add-item-form');
     const addItemInput = node.querySelector('.add-item-input');
+
+    setupAutocomplete(addItemInput, (selectedValue) => {
+        addItemToList(list.id, selectedValue);
+        addItemInput.value = '';
+    });
+
     addItemForm.addEventListener('submit', (e) => {
       e.preventDefault();
       const text = addItemInput.value.trim();
@@ -334,8 +349,75 @@ async function addItemToList(listId, text) {
 
   lists[listIndex] = updatedList;
   await saveListToDB(updatedList);
+  await saveItemToGlobalStore(text);
   // Re-render specifically this list or all lists. For simplicity, re-render all to keep state consistent
   renderLists();
+}
+
+async function searchItems(query) {
+  if (!query) return [];
+  query = query.toLowerCase();
+  console.log("Searching for:", query);
+
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction([ITEMS_STORE_NAME], "readonly");
+    const store = transaction.objectStore(ITEMS_STORE_NAME);
+    const request = store.getAll();
+
+    request.onsuccess = () => {
+      const allItems = request.result || [];
+      console.log("All items count:", allItems.length);
+      const results = allItems
+        .filter(item => item.name && item.name.toLowerCase().includes(query))
+        .slice(0, 5);
+      console.log("Found results:", results);
+      resolve(results);
+    };
+    request.onerror = (event) => reject(event.target.error);
+  });
+}
+
+async function saveItemToGlobalStore(name) {
+  if (!name || typeof name !== "string") return;
+  name = name.trim();
+  if (!name) return;
+
+  console.log("Attempting to save to global store:", name);
+
+  return new Promise((resolve, reject) => {
+    if (!db) {
+        console.error("DB not initialized");
+        return resolve();
+    }
+    if (!db.objectStoreNames.contains(ITEMS_STORE_NAME)) {
+        console.warn("Items store not found");
+        return resolve();
+    }
+
+    try {
+        const transaction = db.transaction([ITEMS_STORE_NAME], "readwrite");
+        const store = transaction.objectStore(ITEMS_STORE_NAME);
+        const index = store.index("name");
+        const request = index.get(name);
+
+        request.onsuccess = () => {
+          if (!request.result) {
+            console.log("Adding new item:", name);
+            store.put({ id: crypto.randomUUID(), name });
+          } else {
+            console.log("Item exists:", name);
+          }
+          resolve();
+        };
+        request.onerror = (event) => {
+          console.warn("Error saving item to global store:", event.target.error);
+          resolve();
+        };
+    } catch(e) {
+        console.error("Transaction error:", e);
+        resolve();
+    }
+  });
 }
 
 async function toggleItem(listId, itemId, done) {
@@ -463,5 +545,163 @@ function decodeList(encoded) {
   } catch (e) {
     console.error('Failed to decode:', e);
     return null;
+  }
+}
+
+function setupAutocomplete(inputElement, onSelect) {
+  let debounceTimer;
+  const dropdown = document.createElement("ul");
+  dropdown.className = "autocomplete-dropdown";
+  dropdown.style.display = "none";
+  inputElement.parentNode.appendChild(dropdown);
+
+  inputElement.addEventListener("input", () => {
+    clearTimeout(debounceTimer);
+    const query = inputElement.value.trim();
+    if (!query) {
+      dropdown.style.display = "none";
+      return;
+    }
+
+    debounceTimer = setTimeout(async () => {
+      const results = await searchItems(query);
+      if (results.length > 0) {
+        dropdown.innerHTML = "";
+        results.forEach((item) => {
+          const li = document.createElement("li");
+          li.className = "suggestion-item";
+          li.textContent = item.name;
+          li.addEventListener("click", () => {
+            inputElement.value = item.name;
+            dropdown.style.display = "none";
+            // Optional: Auto-submit or just fill
+            // onSelect(item.name);
+          });
+          dropdown.appendChild(li);
+        });
+        dropdown.style.display = "block";
+      } else {
+        dropdown.style.display = "none";
+      }
+    }, 300);
+  });
+
+  // Hide dropdown when clicking outside
+  document.addEventListener("click", (e) => {
+    if (!inputElement.contains(e.target) && !dropdown.contains(e.target)) {
+      dropdown.style.display = "none";
+    }
+  });
+}
+
+
+function setupNavigation() {
+  const navLinks = document.querySelectorAll(".nav-link");
+  navLinks.forEach(link => {
+    link.addEventListener("click", () => {
+      const targetId = link.getAttribute("data-target");
+
+      // Update active link
+      navLinks.forEach(l => l.classList.remove("active"));
+      link.classList.add("active");
+
+      // Show/Hide pages
+      document.querySelectorAll(".page").forEach(page => {
+        page.hidden = true;
+      });
+      const targetPage = document.getElementById(targetId);
+      if (targetPage) {
+        targetPage.hidden = false;
+
+        // Trigger Stats render if needed
+        if (targetId === "stats-page") {
+          renderStats();
+        }
+      }
+    });
+  });
+}
+
+
+async function renderStats() {
+  const statsContent = document.getElementById("statsContent");
+  if (!statsContent) return;
+
+  statsContent.innerHTML = "Loading stats...";
+
+  try {
+    const allLists = await getAllLists();
+
+    // Aggregation
+    const itemStats = {};
+    let totalPurchases = 0;
+
+    allLists.forEach(list => {
+      list.items.forEach(item => {
+        if (item.done && item.doneDate) {
+           const name = item.text.trim(); // Normalize name?
+           if (!itemStats[name]) {
+             itemStats[name] = { count: 0, lastDate: item.doneDate };
+           }
+           itemStats[name].count++;
+           if (new Date(item.doneDate) > new Date(itemStats[name].lastDate)) {
+             itemStats[name].lastDate = item.doneDate;
+           }
+           totalPurchases++;
+        }
+      });
+    });
+
+    const sortedItems = Object.entries(itemStats).sort((a, b) => b[1].count - a[1].count);
+
+    if (sortedItems.length === 0) {
+      statsContent.innerHTML = "<p>No purchase history available yet.</p>";
+      return;
+    }
+
+    const mostPurchased = sortedItems[0];
+    const leastPurchased = sortedItems[sortedItems.length - 1];
+
+    // Simple HTML generation
+    let html = "<div class=\"stats-grid\">";
+
+    html += `
+      <div class=\"stat-card\">
+        <h3>Total Items Purchased</h3>
+        <p class=\"stat-value\">${totalPurchases}</p>
+      </div>
+      <div class=\"stat-card\">
+        <h3>Most Purchased</h3>
+        <p class=\"stat-value\">${mostPurchased[0]}</p>
+        <p class=\"stat-sub\">${mostPurchased[1].count} times</p>
+      </div>
+      <div class=\"stat-card\">
+        <h3>Least Purchased</h3>
+        <p class=\"stat-value\">${leastPurchased[0]}</p>
+        <p class=\"stat-sub\">${leastPurchased[1].count} times</p>
+      </div>
+    `;
+
+    html += "</div>";
+
+    // Detailed Table
+    html += "<h3>Purchase History</h3>";
+    html += "<table class=\"stats-table\"><thead><tr><th>Item</th><th>Count</th><th>Last Purchased</th></tr></thead><tbody>";
+
+    sortedItems.slice(0, 10).forEach(([name, data]) => {
+      html += `<tr>
+        <td>${name}</td>
+        <td>${data.count}</td>
+        <td>${formatDate(new Date(data.lastDate))}</td>
+      </tr>`;
+    });
+
+    html += "</tbody></table>";
+
+    statsContent.innerHTML = html;
+
+  } catch (err) {
+    console.error("Error calculating stats:", err);
+    statsContent.innerHTML = "<p>Error loading statistics.</p>";
   }
 }
