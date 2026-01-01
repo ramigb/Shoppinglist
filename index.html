@@ -11,34 +11,74 @@
   <link rel="icon" type="image/png" href="icon.png">
 </head>
 <body>
-  <main class="layout">
-    <section class="panel">
-      <h2>Create a list</h2>
-      <label for="listTitle">List title (optional)</label>
-      <input id="listTitle" type="text" placeholder="Defaults to creation date and time">
-
-      <label for="itemInput">Items (new lines or commas)</label>
-      <textarea id="itemInput" rows="8" placeholder="Milk, Eggs, Coffee\nBread"></textarea>
-
-      <div class="actions">
-        <button id="generateButton" class="primary">Create shopping list</button>
-        <button id="clearInput" class="secondary">Clear</button>
+  <nav class="navbar">
+    <div class="nav-content">
+      <div class="nav-brand">Shopping List</div>
+      <div class="nav-links">
+        <button class="nav-link active" data-target="home-page">Home</button>
+        <button class="nav-link" data-target="stats-page">Statistics</button>
+        <button class="nav-link" data-target="about-page">About Us</button>
       </div>
-      <p class="hint">Tip: Press “Create shopping list” to parse your items and store them locally.</p>
-    </section>
+    </div>
+  </nav>
 
-    <section class="panel lists-panel">
-      <div class="panel-heading">
-        <h2>Your lists</h2>
-        <div class="panel-actions">
-          <input type="file" id="uploadInput" accept=".json" style="display: none;">
-          <button id="uploadBackup" class="secondary">Upload Backup</button>
-          <button id="downloadBackup" class="secondary">Download Backup</button>
+  <div id="home-page" class="page">
+    <main class="layout">
+      <section class="panel">
+        <h2>Create a list</h2>
+        <label for="listTitle">List title (optional)</label>
+        <input id="listTitle" type="text" placeholder="Defaults to creation date and time">
+
+        <label for="itemInput">Items (new lines or commas)</label>
+        <textarea id="itemInput" rows="8" placeholder="Milk, Eggs, Coffee\nBread"></textarea>
+
+        <div class="actions">
+          <button id="generateButton" class="primary">Create shopping list</button>
+          <button id="clearInput" class="secondary">Clear</button>
         </div>
-      </div>
-      <div id="listContainer" class="list-container" aria-live="polite"></div>
-    </section>
-  </main>
+        <p class="hint">Tip: Press “Create shopping list” to parse your items and store them locally.</p>
+      </section>
+
+      <section class="panel lists-panel">
+        <div class="panel-heading">
+          <h2>Your lists</h2>
+          <div class="panel-actions">
+            <input type="file" id="uploadInput" accept=".json" style="display: none;">
+            <button id="uploadBackup" class="secondary">Upload Backup</button>
+            <button id="downloadBackup" class="secondary">Download Backup</button>
+          </div>
+        </div>
+        <div id="listContainer" class="list-container" aria-live="polite"></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="stats-page" class="page" hidden>
+    <main class="layout single-col">
+      <section class="panel">
+        <h2>Statistics</h2>
+        <div id="statsContent">Loading...</div>
+      </section>
+    </main>
+  </div>
+
+  <div id="about-page" class="page" hidden>
+    <main class="layout single-col">
+      <section class="panel">
+        <h2>About Us</h2>
+        <p>Welcome to the Shopping List Generator!</p>
+        <p>This application helps you organize your shopping needs efficiently. You can create lists, manage items, and even track your purchase habits.</p>
+        <h3>How to use:</h3>
+        <ul>
+            <li><strong>Create a list:</strong> Enter a title and items in the input box on the home page.</li>
+            <li><strong>Manage lists:</strong> Check off items as you buy them. You can also delete items or entire lists.</li>
+            <li><strong>Focus Mode:</strong> Click the expand icon on a list to view it in full screen.</li>
+            <li><strong>Backup:</strong> Download and upload backups of your data to keep it safe.</li>
+        </ul>
+        <p>Created by Rami GB.</p>
+      </section>
+    </main>
+  </div>
 
   <template id="listTemplate">
     <article class="list-card">
