@@ -34,7 +34,21 @@ export default function HomePage() {
     // Listen for list creation events from the dialog
     const handleListCreated = () => fetchLatest();
     window.addEventListener("list-created", handleListCreated);
-    return () => window.removeEventListener("list-created", handleListCreated);
+
+    // Refresh when app comes to foreground
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        fetchLatest();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", fetchLatest);
+
+    return () => {
+      window.removeEventListener("list-created", handleListCreated);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", fetchLatest);
+    };
   }, []);
 
   const handleSharedList = async (encoded: string) => {
@@ -93,7 +107,15 @@ export default function HomePage() {
       ) : (
         <div className="text-center py-10">
           <p className="text-muted-foreground mb-4">No lists created yet.</p>
-          <Button onClick={() => document.querySelector<HTMLButtonElement>('header button')?.click()}>
+          <Button onClick={() => {
+            const headerButtons = Array.from(document.querySelectorAll('header button'));
+            const createBtn = headerButtons.find(b => b.textContent?.includes('Create List') && b.offsetParent !== null);
+            if (createBtn) {
+              (createBtn as HTMLButtonElement).click();
+            } else {
+              document.querySelector<HTMLButtonElement>('header button')?.click();
+            }
+          }}>
             Create a List
           </Button>
         </div>
