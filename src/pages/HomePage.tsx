@@ -109,9 +109,14 @@ export default function HomePage() {
           <p className="text-muted-foreground mb-4">No lists created yet.</p>
           <Button onClick={() => {
             const headerButtons = Array.from(document.querySelectorAll('header button'));
-            const createBtn = headerButtons.find(b => b.textContent?.includes('Create List') && b.offsetParent !== null);
+            const createBtn = headerButtons.find(
+              (b): b is HTMLButtonElement =>
+                b instanceof HTMLButtonElement
+                && b.textContent?.includes('Create List')
+                && b.offsetParent !== null,
+            );
             if (createBtn) {
-              (createBtn as HTMLButtonElement).click();
+              createBtn.click();
             } else {
               document.querySelector<HTMLButtonElement>('header button')?.click();
             }
