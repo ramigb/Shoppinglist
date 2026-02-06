@@ -63,7 +63,9 @@ export function ListCard({ list, onUpdate, isFocusMode = false, toggleFocusMode 
       };
     const json = JSON.stringify(minified);
     const encoded = btoa(unescape(encodeURIComponent(json)));
-    const url = `${window.location.origin}?share=${encoded}`;
+    const shareUrl = new URL(window.location.href);
+    shareUrl.searchParams.set("share", encoded);
+    const url = shareUrl.toString();
 
     navigator.clipboard.writeText(url).then(() => {
         alert('Link copied to clipboard!');
