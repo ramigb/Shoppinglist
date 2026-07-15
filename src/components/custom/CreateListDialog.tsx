@@ -64,11 +64,11 @@ export function CreateListDialog({ open, onOpenChange }: CreateListDialogProps) 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="rounded-3xl sm:max-w-[480px]">
         <DialogHeader>
-          <DialogTitle>Create New List</DialogTitle>
+          <DialogTitle className="text-2xl">Create a new list</DialogTitle>
           <DialogDescription>
-            Enter a title and your items below. Separate items with commas or new lines.
+            Add everything in one go. Separate items with commas or new lines.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
@@ -76,7 +76,7 @@ export function CreateListDialog({ open, onOpenChange }: CreateListDialogProps) 
             <Label htmlFor="title">List Title</Label>
             <Input
               id="title"
-              placeholder="Groceries..."
+              placeholder="e.g. Weekly groceries"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
             />
@@ -85,8 +85,8 @@ export function CreateListDialog({ open, onOpenChange }: CreateListDialogProps) 
             <Label htmlFor="items">Items</Label>
             <Textarea
               id="items"
-              placeholder="Milk, Eggs, Bread..."
-              className="min-h-[100px]"
+              placeholder={"Milk\nEggs\nSourdough bread"}
+              className="min-h-40 resize-none"
               value={items}
               onChange={(e) => setItems(e.target.value)}
             />
@@ -94,11 +94,11 @@ export function CreateListDialog({ open, onOpenChange }: CreateListDialogProps) 
         </div>
         <DialogFooter>
             <div className="flex justify-between w-full">
-                <Button variant="outline" onClick={() => {
+                <Button variant="ghost" onClick={() => {
                     setItems("");
                     setTitle("");
                 }}>Clear</Button>
-                <Button onClick={handleCreate}>Create List</Button>
+                <Button onClick={handleCreate} className="px-6">Create list</Button>
             </div>
         </DialogFooter>
       </DialogContent>

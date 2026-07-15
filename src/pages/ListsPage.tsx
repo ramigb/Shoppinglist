@@ -50,16 +50,16 @@ export default function ListsPage() {
         return sort === "newest" ? dateB - dateA : dateA - dateB;
     });
 
-  if (loading) return <div>Loading...</div>;
+  if (loading) return <div className="h-80 animate-pulse rounded-3xl bg-muted" aria-label="Loading lists" />;
 
   return (
-    <div className="max-w-3xl mx-auto">
-      <div className="flex flex-col sm:flex-row justify-between items-end sm:items-center mb-6 gap-4">
-        <h1 className="text-2xl font-bold">My Lists</h1>
+    <div className="mx-auto max-w-4xl">
+      <div className="mb-8 flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+        <div><h1 className="text-3xl font-bold tracking-tight sm:text-4xl">All your lists</h1><p className="mt-2 text-muted-foreground">{lists.length} {lists.length === 1 ? "list" : "lists"}, saved on this device</p></div>
 
-        <div className="flex gap-4 w-full sm:w-auto">
+        <div className="flex w-full gap-3 sm:w-auto">
             <div className="flex-1 sm:w-40">
-                <Label htmlFor="sort-select" className="text-xs mb-1 block">Sort By</Label>
+                <Label htmlFor="sort-select" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sort</Label>
                 <Select value={sort} onValueChange={(v) => setSort(v as SortOption)}>
                     <SelectTrigger id="sort-select">
                         <SelectValue />
@@ -71,7 +71,7 @@ export default function ListsPage() {
                 </Select>
             </div>
             <div className="flex-1 sm:w-40">
-                <Label htmlFor="filter-select" className="text-xs mb-1 block">Filter Date</Label>
+                <Label htmlFor="filter-select" className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-muted-foreground">Date</Label>
                 <Select value={dateFilter} onValueChange={setDateFilter}>
                     <SelectTrigger id="filter-select">
                         <SelectValue />
@@ -87,7 +87,7 @@ export default function ListsPage() {
         </div>
       </div>
 
-      <div className="space-y-6">
+      <div className="space-y-5">
         {filteredLists.length > 0 ? (
             filteredLists.map(list => (
                 <ListCard
@@ -99,7 +99,7 @@ export default function ListsPage() {
                 />
             ))
         ) : (
-            <p className="text-muted-foreground text-center py-10">No lists match your criteria.</p>
+            <div className="rounded-3xl border border-dashed bg-card py-14 text-center text-muted-foreground">No lists match this filter.</div>
         )}
       </div>
     </div>

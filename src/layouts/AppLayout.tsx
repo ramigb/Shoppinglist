@@ -1,120 +1,63 @@
 import { Link, useLocation } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { Plus, Menu } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { useState } from "react";
-import { CreateListDialog } from "@/components/custom/CreateListDialog";
+import { BarChart3, Home, Info, ListChecks, Plus, ShoppingBasket } from "lucide-react";
+import { CreateListProvider } from "@/components/custom/CreateListProvider";
+import { useCreateList } from "@/components/custom/create-list-context";
 import { ModeToggle } from "@/components/mode-toggle";
-import {
-  Sheet,
-  SheetContent,
-  SheetTrigger,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+
+const navItems = [
+  { label: "Today", path: "/", icon: Home },
+  { label: "Lists", path: "/lists", icon: ListChecks },
+  { label: "Insights", path: "/stats", icon: BarChart3 },
+  { label: "About", path: "/about", icon: Info },
+];
 
 export function Layout({ children }: { children: React.ReactNode }) {
-  const location = useLocation();
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  return <CreateListProvider><AppShell>{children}</AppShell></CreateListProvider>;
+}
 
-  const navItems = [
-    { label: "Home", path: "/" },
-    { label: "My Lists", path: "/lists" },
-    { label: "Statistics", path: "/stats" },
-    { label: "About", path: "/about" },
-  ];
+function AppShell({ children }: { children: React.ReactNode }) {
+  const location = useLocation();
+  const { openCreateList } = useCreateList();
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col">
-      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container flex h-14 items-center justify-between px-4">
-          <div className="mr-4 flex items-center">
-            {/* Mobile Menu */}
-            <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>
-              <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className="md:hidden mr-2">
-                  <Menu className="h-5 w-5" />
-                  <span className="sr-only">Toggle menu</span>
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="left">
-                <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
-                <div className="flex flex-col space-y-4 py-4">
-                  <Link
-                    to="/"
-                    className="font-bold text-lg mb-2"
-                    onClick={() => setIsSheetOpen(false)}
-                  >
-                    Shopping List
-                  </Link>
-                  {navItems.map((item) => (
-                    <Link
-                      key={item.path}
-                      to={item.path}
-                      className={cn(
-                        "transition-colors hover:text-foreground/80",
-                        location.pathname === item.path
-                          ? "text-foreground"
-                          : "text-foreground/60"
-                      )}
-                      onClick={() => setIsSheetOpen(false)}
-                    >
-                      {item.label}
-                    </Link>
-                  ))}
-                  <div className="flex items-center space-x-2">
-                    <Button
-                      size="sm"
-                      className="flex-1 justify-start"
-                      onClick={() => {
-                        setIsCreateOpen(true);
-                        setIsSheetOpen(false);
-                      }}
-                    >
-                      <Plus className="mr-2 h-4 w-4" /> Create List
-                    </Button>
-                  </div>
-                  <div className="pt-2">
-                     <ModeToggle />
-                  </div>
-                </div>
-              </SheetContent>
-            </Sheet>
-
-            <Link to="/" className="mr-6 flex items-center space-x-2 font-bold">
-              Shopping List
-            </Link>
-          </div>
-
-          <nav className="hidden md:flex items-center space-x-4 lg:space-x-6 text-sm font-medium">
-            {navItems.map((item) => (
-              <Link
-                key={item.path}
-                to={item.path}
-                className={cn(
-                  "transition-colors hover:text-foreground/80",
-                  location.pathname === item.path
-                    ? "text-foreground"
-                    : "text-foreground/60"
-                )}
-              >
-                {item.label}
+    <div className="min-h-dvh bg-background text-foreground">
+      <header className="sticky top-0 z-40 border-b border-border/70 bg-background/85 backdrop-blur-xl">
+        <div className="mx-auto flex h-16 max-w-6xl items-center gap-8 px-4 sm:px-6">
+          <Link to="/" className="flex items-center gap-2.5" aria-label="Basket home">
+            <span className="grid size-9 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm">
+              <ShoppingBasket className="size-5" />
+            </span>
+            <span className="text-lg font-bold tracking-tight">Basket</span>
+          </Link>
+          <nav className="hidden items-center gap-1 md:flex" aria-label="Primary navigation">
+            {navItems.map(({ label, path, icon: Icon }) => (
+              <Link key={path} to={path} className={cn("flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors", location.pathname === path ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/70 hover:text-foreground")}>
+                <Icon className="size-4" />{label}
               </Link>
             ))}
           </nav>
-
-          <div className="ml-auto hidden md:flex items-center space-x-2">
-            <Button size="sm" onClick={() => setIsCreateOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" /> Create List
-            </Button>
+          <div className="ml-auto flex items-center gap-2">
             <ModeToggle />
+            <Button type="button" onClick={openCreateList} className="hidden rounded-xl sm:flex">
+              <Plus className="size-4" /> New list
+            </Button>
           </div>
         </div>
       </header>
 
-      <main className="flex-1 container py-6 px-4">{children}</main>
+      <main className="mx-auto max-w-6xl px-4 pb-28 pt-8 sm:px-6 md:pb-12 md:pt-10">{children}</main>
 
-      <CreateListDialog open={isCreateOpen} onOpenChange={setIsCreateOpen} />
+      <nav className="fixed inset-x-3 bottom-3 z-40 grid grid-cols-5 rounded-2xl border border-border/70 bg-card/95 p-1.5 shadow-2xl backdrop-blur-xl md:hidden" aria-label="Mobile navigation">
+        {navItems.slice(0, 2).map(({ label, path, icon: Icon }) => <MobileLink key={path} {...{label,path,Icon}} active={location.pathname === path} />)}
+        <button type="button" onClick={openCreateList} className="mx-auto -mt-5 grid size-14 place-items-center rounded-2xl bg-primary text-primary-foreground shadow-lg" aria-label="Create a new list"><Plus className="size-6" /></button>
+        {navItems.slice(2).map(({ label, path, icon: Icon }) => <MobileLink key={path} {...{label,path,Icon}} active={location.pathname === path} />)}
+      </nav>
     </div>
   );
+}
+
+function MobileLink({ label, path, Icon, active }: { label: string; path: string; Icon: typeof Home; active: boolean }) {
+  return <Link to={path} className={cn("flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-medium", active ? "bg-accent text-primary" : "text-muted-foreground")}><Icon className="size-5" />{label}</Link>;
 }

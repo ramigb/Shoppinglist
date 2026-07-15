@@ -4,7 +4,7 @@ import { ShoppingList } from "@/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Download, Upload } from "lucide-react";
+import { Download, PackageCheck, Sparkles, TrendingUp, Upload } from "lucide-react";
 import { format } from "date-fns";
 
 export default function StatsPage() {
@@ -109,20 +109,20 @@ export default function StatsPage() {
       reader.readAsText(file);
   };
 
-  if (loading) return <div>Loading...</div>;
+  if (loading) return <div className="h-80 animate-pulse rounded-3xl bg-muted" aria-label="Loading insights" />;
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Statistics & Backup</h1>
+    <div className="mx-auto max-w-4xl space-y-8">
+      <div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
+        <div><h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Shopping insights</h1><p className="mt-2 text-muted-foreground">A simple view of what makes it into your basket.</p></div>
         <div className="flex gap-2">
-            <Button variant="outline" onClick={handleDownloadBackup}>
-                <Download className="mr-2 h-4 w-4" /> Export Backup
+            <Button variant="outline" onClick={handleDownloadBackup} className="flex-1 rounded-xl sm:flex-none">
+                <Download className="size-4" /> Export
             </Button>
             <div className="relative">
-                <Button variant="outline" className="cursor-pointer" asChild>
+                <Button variant="outline" className="cursor-pointer rounded-xl" asChild>
                     <label>
-                        <Upload className="mr-2 h-4 w-4" /> Import Backup
+                        <Upload className="size-4" /> Import
                         <input type="file" className="hidden" accept=".json" onChange={handleUploadBackup} />
                     </label>
                 </Button>
@@ -131,34 +131,34 @@ export default function StatsPage() {
       </div>
 
       {!stats ? (
-        <Card>
-            <CardContent className="pt-6">
-                <p className="text-center text-muted-foreground">No purchase history available yet.</p>
+        <Card className="rounded-3xl border-dashed py-12">
+            <CardContent className="text-center">
+                <Sparkles className="mx-auto mb-4 size-8 text-primary" /><h2 className="font-bold">Insights start with your first check-off</h2><p className="mt-2 text-muted-foreground">Completed items will appear here automatically.</p>
             </CardContent>
         </Card>
       ) : (
         <>
             <div className="grid gap-4 md:grid-cols-3">
-                <Card>
+                <Card className="rounded-2xl">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Total Items Purchased</CardTitle>
+                    <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground"><PackageCheck className="size-4 text-primary" /> Items purchased</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <div className="text-2xl font-bold">{stats.totalPurchases}</div>
                 </CardContent>
                 </Card>
-                <Card>
+                <Card className="rounded-2xl">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Most Purchased</CardTitle>
+                    <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground"><TrendingUp className="size-4 text-primary" /> Most purchased</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <div className="text-2xl font-bold">{stats.mostPurchased?.name}</div>
                     <p className="text-xs text-muted-foreground">{stats.mostPurchased?.count} times</p>
                 </CardContent>
                 </Card>
-                <Card>
+                <Card className="rounded-2xl">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Least Purchased</CardTitle>
+                    <CardTitle className="text-sm font-medium text-muted-foreground">Occasional pick</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <div className="text-2xl font-bold">{stats.leastPurchased?.name}</div>
@@ -167,9 +167,9 @@ export default function StatsPage() {
                 </Card>
             </div>
 
-            <Card>
+            <Card className="overflow-hidden rounded-3xl">
                 <CardHeader>
-                    <CardTitle>Purchase History (Top 10)</CardTitle>
+                    <CardTitle>Frequently purchased</CardTitle>
                 </CardHeader>
                 <CardContent>
                     <Table>

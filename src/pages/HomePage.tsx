@@ -3,11 +3,15 @@ import { listService } from "@/lib/db";
 import { ShoppingList } from "@/types";
 import { ListCard } from "@/components/custom/ListCard";
 import { Button } from "@/components/ui/button";
+import { ArrowRight, ListPlus, Sparkles } from "lucide-react";
+import { Link } from "react-router-dom";
+import { useCreateList } from "@/components/custom/create-list-context";
 
 export default function HomePage() {
   const [latestList, setLatestList] = useState<ShoppingList | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeFocusId, setActiveFocusId] = useState<string | null>(null);
+  const { openCreateList } = useCreateList();
 
   const fetchLatest = async () => {
     try {
@@ -92,11 +96,18 @@ export default function HomePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (loading) return <div>Loading...</div>;
+  if (loading) return <div className="mx-auto h-80 max-w-3xl animate-pulse rounded-3xl bg-muted" aria-label="Loading your latest list" />;
 
   return (
-    <div className="max-w-2xl mx-auto">
-      <h1 className="text-2xl font-bold mb-6">Latest List</h1>
+    <div className="mx-auto max-w-3xl">
+      <div className="mb-8 flex items-end justify-between gap-4">
+        <div>
+          <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-primary"><Sparkles className="size-4" /> Ready when you are</div>
+          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Your next shop</h1>
+          <p className="mt-2 text-muted-foreground">Check off items as you move through the store.</p>
+        </div>
+        {latestList && <Button asChild variant="ghost" className="hidden sm:flex"><Link to="/lists">All lists <ArrowRight className="size-4" /></Link></Button>}
+      </div>
       {latestList ? (
         <ListCard
             list={latestList}
@@ -105,22 +116,11 @@ export default function HomePage() {
             toggleFocusMode={setActiveFocusId}
         />
       ) : (
-        <div className="text-center py-10">
-          <p className="text-muted-foreground mb-4">No lists created yet.</p>
-          <Button onClick={() => {
-            const headerButtons = Array.from(document.querySelectorAll('header button'));
-            const createBtn = headerButtons.find(
-              (b): b is HTMLButtonElement =>
-                b instanceof HTMLButtonElement
-                && b.textContent?.includes('Create List')
-                && b.offsetParent !== null,
-            );
-            if (createBtn) {
-              createBtn.click();
-            } else {
-              document.querySelector<HTMLButtonElement>('header button')?.click();
-            }
-          }}>
+        <div className="rounded-3xl border border-dashed bg-card px-6 py-16 text-center shadow-sm">
+          <span className="mx-auto mb-5 grid size-14 place-items-center rounded-2xl bg-accent text-primary"><ListPlus className="size-7" /></span>
+          <h2 className="text-xl font-bold">Start with a fresh list</h2>
+          <p className="mx-auto mb-6 mt-2 max-w-sm text-muted-foreground">Add everything at once—commas and new lines both work.</p>
+          <Button type="button" onClick={openCreateList}>
             Create a List
           </Button>
         </div>

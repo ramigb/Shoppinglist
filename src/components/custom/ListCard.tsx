@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { ShoppingList, Item } from "@/types";
-import { Trash2, Share2, Maximize2, Minimize2, Plus } from "lucide-react";
+import { Copy, Expand, Minimize2, Plus, Trash2 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { listService, itemService } from "@/lib/db";
 import { cn } from "@/lib/utils";
@@ -21,6 +21,8 @@ export function ListCard({ list, onUpdate, isFocusMode = false, toggleFocusMode 
   const [suggestions, setSuggestions] = useState<{ id: string, name: string }[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const completedCount = items.filter((item) => item.done).length;
+  const progress = items.length ? Math.round((completedCount / items.length) * 100) : 0;
 
   // Sync state when props change
   useEffect(() => {
@@ -68,7 +70,7 @@ export function ListCard({ list, onUpdate, isFocusMode = false, toggleFocusMode 
     const url = shareUrl.toString();
 
     navigator.clipboard.writeText(url).then(() => {
-        alert('Link copied to clipboard!');
+        // Clipboard write is the confirmation; keep the shopping flow uninterrupted.
     }).catch(err => {
         console.error('Failed to copy: ', err);
         alert('Failed to copy link to clipboard.');
@@ -142,46 +144,50 @@ export function ListCard({ list, onUpdate, isFocusMode = false, toggleFocusMode 
   };
 
   return (
-    <Card className={cn("w-full transition-all duration-300", isFocusMode ? "fixed inset-0 z-50 h-screen w-screen overflow-auto rounded-none m-0" : "mb-4")}>
-      <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-        <div className="flex-1 mr-4">
+    <Card className={cn("w-full overflow-hidden rounded-3xl border-border/70 shadow-sm transition-all duration-300", isFocusMode ? "fixed inset-0 z-50 h-dvh w-screen overflow-auto rounded-none border-0" : "") }>
+      <CardHeader className="flex flex-row items-start justify-between space-y-0 border-b bg-card px-5 pb-5 pt-5 sm:px-7 sm:pt-7">
+        <div className="min-w-0 flex-1 pr-2">
           <Input
-            className="text-lg font-semibold border-none focus-visible:ring-1 p-0 h-auto"
+            aria-label="List title"
+            className="h-auto border-none bg-transparent p-0 text-xl font-bold tracking-tight shadow-none focus-visible:ring-1 sm:text-2xl"
             defaultValue={list.title}
             onBlur={(e) => handleTitleChange(e.target.value)}
             onKeyDown={(e) => {
                 if(e.key === 'Enter') e.currentTarget.blur();
             }}
           />
-          <p className="text-sm text-muted-foreground mt-1">
-            Created {new Date(list.createdAt).toLocaleDateString()}
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            {completedCount} of {items.length} items · {new Date(list.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
           </p>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center gap-0.5">
           {toggleFocusMode && (
-              <Button variant="ghost" size="icon" onClick={() => toggleFocusMode(isFocusMode ? null : list.id)}>
-                {isFocusMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+              <Button aria-label={isFocusMode ? "Exit focus mode" : "Open focus mode"} variant="ghost" size="icon" onClick={() => toggleFocusMode(isFocusMode ? null : list.id)}>
+                {isFocusMode ? <Minimize2 className="size-4" /> : <Expand className="size-4" />}
               </Button>
           )}
-          <Button variant="ghost" size="icon" onClick={handleShare}>
-            <Share2 className="h-4 w-4" />
+          <Button aria-label="Copy share link" variant="ghost" size="icon" onClick={handleShare}>
+            <Copy className="size-4" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={handleDeleteList} className="text-destructive hover:text-destructive">
-            <Trash2 className="h-4 w-4" />
+          <Button aria-label="Delete list" variant="ghost" size="icon" onClick={handleDeleteList} className="text-muted-foreground hover:text-destructive">
+            <Trash2 className="size-4" />
           </Button>
         </div>
       </CardHeader>
-      <CardContent>
-        <div className="space-y-2 mb-4">
+      <div className="h-1 bg-muted"><div className="h-full bg-primary transition-all duration-300" style={{ width: `${progress}%` }} /></div>
+      <CardContent className="px-3 py-4 sm:px-5 sm:py-5">
+        <div className="mb-5 space-y-1">
             {items.map((item) => (
-                <div key={item.id} className="flex items-center gap-2 group">
+                <div key={item.id} className={cn("group flex min-h-13 items-center gap-3 rounded-2xl px-3 transition-colors hover:bg-muted/70", item.done && "bg-muted/40")}>
                     <Checkbox
+                        aria-label={`Mark ${item.text} as ${item.done ? "not purchased" : "purchased"}`}
+                        className="size-6 rounded-lg data-[state=checked]:bg-primary"
                         checked={item.done}
                         onCheckedChange={(c) => handleToggleItem(item.id, c === true)}
                     />
                     <Input
                         className={cn(
-                            "flex-1 border-none focus-visible:ring-1 h-8 p-1",
+                            "h-10 flex-1 border-none bg-transparent px-0 text-base shadow-none focus-visible:ring-1",
                             item.done && "line-through text-muted-foreground"
                         )}
                         defaultValue={item.text}
@@ -193,25 +199,27 @@ export function ListCard({ list, onUpdate, isFocusMode = false, toggleFocusMode 
                     <Button
                         variant="ghost"
                         size="icon"
-                        className="opacity-0 group-hover:opacity-100 h-8 w-8 text-muted-foreground hover:text-destructive transition-opacity"
+                        aria-label={`Delete ${item.text}`}
+                        className="size-10 text-muted-foreground opacity-60 transition-opacity hover:text-destructive sm:opacity-0 sm:group-hover:opacity-100"
                         onClick={() => handleDeleteItem(item.id)}
                     >
-                        <Trash2 className="h-3 w-3" />
+                        <Trash2 className="size-4" />
                     </Button>
                 </div>
             ))}
         </div>
 
         <div className="relative" ref={wrapperRef}>
-            <form onSubmit={handleAddItemSubmit} className="flex gap-2">
+            <form onSubmit={handleAddItemSubmit} className="flex gap-2 rounded-2xl bg-muted/70 p-1.5">
                 <Input
-                    placeholder="Add item..."
+                    aria-label="New item"
+                    placeholder="Add another item"
                     value={newItemText}
                     onChange={handleAddItemInput}
-                    className="flex-1"
+                    className="h-11 flex-1 border-0 bg-transparent shadow-none"
                 />
-                <Button type="submit" size="icon">
-                    <Plus className="h-4 w-4" />
+                <Button type="submit" size="icon" className="size-11 rounded-xl" aria-label="Add item">
+                    <Plus className="size-5" />
                 </Button>
             </form>
             {showSuggestions && suggestions.length > 0 && (
@@ -219,7 +227,7 @@ export function ListCard({ list, onUpdate, isFocusMode = false, toggleFocusMode 
                     {suggestions.map(s => (
                         <li
                             key={s.id}
-                            className="px-3 py-2 hover:bg-accent hover:text-accent-foreground cursor-pointer text-sm"
+                            className="cursor-pointer px-4 py-3 text-sm hover:bg-accent hover:text-accent-foreground"
                             onClick={() => addItem(s.name)}
                         >
                             {s.name}
