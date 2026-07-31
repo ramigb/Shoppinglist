@@ -22,6 +22,11 @@ import {
   validateShoppingList,
 } from "./db";
 import { firestore } from "./firebase";
+import {
+  modifiedAt,
+  reconciliationAction,
+  remoteChangeAction,
+} from "./sync-policy";
 import { Item, ShoppingList } from "../types";
 
 export type SyncStatus = "local" | "syncing" | "synced" | "offline" | "error";
@@ -148,10 +153,6 @@ async function deleteRemoteList(userId: string, listId: string) {
   if (isActiveUser(userId)) await clearDeletionTombstone(listId);
 }
 
-function modifiedAt(list: ShoppingList) {
-  return Date.parse(list.updatedAt ?? list.createdAt);
-}
-
 function isActiveUser(userId: string) {
   return activeUserId === userId && getActiveListUser() === userId;
 }
@@ -217,26 +218,27 @@ async function reconcile(userId: string) {
     if (!isActiveUser(userId)) return;
     const local = localById.get(id);
     const remote = remoteById.get(id);
-    if (local && (!remote || modifiedAt(local) >= modifiedAt(remote))) {
+    const action = reconciliationAction(local, remote);
+    if (action === "write-local" && local) {
       await writeRemoteList(userId, local);
-    } else if (remote) {
+    } else if (action === "save-remote" && remote) {
       await saveListFromSync(remote);
     }
   }
 }
 
 async function applyRemoteChange(userId: string, snapshot: DocumentSnapshot) {
+  if (snapshot.metadata.hasPendingWrites) return;
   const remote = await readRemoteList(userId, snapshot);
   if (!remote || !isActiveUser(userId)) return;
   const local = await listService.get(remote.id);
-  if (!local || modifiedAt(remote) >= modifiedAt(local)) {
+  if (remoteChangeAction(local, remote) === "save-remote") {
     await saveListFromSync(remote);
-  } else {
-    await queueWrite(userId, () => writeRemoteList(userId, local));
   }
 }
 
 async function applyRemoteDeletion(userId: string, snapshot: DocumentSnapshot) {
+  if (snapshot.metadata.hasPendingWrites) return;
   const deletion = readRemoteDeletion(snapshot);
   if (!deletion || !isActiveUser(userId)) return;
   const local = await listService.get(deletion.id);
