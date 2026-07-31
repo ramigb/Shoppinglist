@@ -1,0 +1,140 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: users/{userId}/lists
+// Document ID: list UUID
+// Fields:
+//   - title: string (required, 1..200 characters)
+//   - createdAt: timestamp (required, immutable)
+//   - updatedAt: timestamp (required, server request time)
+//   - itemCount: integer (required, 0..200)
+//
+// Collection: users/{userId}/lists/{listId}/items
+// Document ID: item UUID
+// Fields:
+//   - text: string (required, 1..500 characters)
+//   - done: bool (required)
+//   - doneDate: timestamp or null (required)
+//   - updatedAt: timestamp (required, server request time)
+//
+// Collection: users/{userId}/deletions
+// Document ID: deleted list UUID
+// Fields:
+//   - deletedAt: timestamp (required, server request time)
+//
+// No user profile or PII documents are stored.
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // =============================================================
+    // Helper Functions
+    // =============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function uidUnchanged() {
+      return !('uid' in request.resource.data);
+    }
+
+    function uidNotModified() {
+      return !('uid' in request.resource.data) && !('uid' in resource.data);
+    }
+
+    function hasRequiredFields(data, fields) {
+      return data.keys().hasAll(fields);
+    }
+
+    function isValidDocumentId(documentId) {
+      return documentId.size() >= 1 && documentId.size() <= 128;
+    }
+
+    function isReasonableClientTime(value) {
+      return value is timestamp &&
+        value <= request.time + duration.value(5, 'm');
+    }
+
+    function isValidList(data) {
+      return hasRequiredFields(data, ['title', 'createdAt', 'updatedAt', 'itemCount']) &&
+        data.keys().hasOnly(['title', 'createdAt', 'updatedAt', 'itemCount']) &&
+        data.title is string &&
+        data.title.size() >= 1 &&
+        data.title.size() <= 200 &&
+        isReasonableClientTime(data.createdAt) &&
+        data.updatedAt is timestamp &&
+        data.updatedAt == request.time &&
+        data.itemCount is int &&
+        data.itemCount >= 0 &&
+        data.itemCount <= 200;
+    }
+
+    function isValidItem(data) {
+      return hasRequiredFields(data, ['text', 'done', 'doneDate', 'updatedAt']) &&
+        data.keys().hasOnly(['text', 'done', 'doneDate', 'updatedAt']) &&
+        data.text is string &&
+        data.text.size() >= 1 &&
+        data.text.size() <= 500 &&
+        data.done is bool &&
+        (data.doneDate == null || isReasonableClientTime(data.doneDate)) &&
+        data.updatedAt is timestamp &&
+        data.updatedAt == request.time;
+    }
+
+    function isValidDeletion(data) {
+      return hasRequiredFields(data, ['deletedAt']) &&
+        data.keys().hasOnly(['deletedAt']) &&
+        data.deletedAt is timestamp &&
+        data.deletedAt == request.time;
+    }
+
+    function parentListExists(userId, listId) {
+      return exists(/databases/$(database)/documents/users/$(userId)/lists/$(listId));
+    }
+
+    function parentListWillBeUpdated(userId, listId) {
+      let parent = /databases/$(database)/documents/users/$(userId)/lists/$(listId);
+      return existsAfter(parent) && getAfter(parent).data.updatedAt == request.time;
+    }
+
+    match /users/{userId}/lists/{listId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidDocumentId(listId) &&
+        uidUnchanged() && isValidList(request.resource.data);
+      allow update: if isOwner(userId) && isValidDocumentId(listId) && uidNotModified() &&
+        isValidList(request.resource.data) &&
+        request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isOwner(userId);
+
+      match /items/{itemId} {
+        allow read: if isOwner(userId) && parentListExists(userId, listId);
+        allow create: if isOwner(userId) && isValidDocumentId(itemId) && uidUnchanged() &&
+          isValidItem(request.resource.data) &&
+          parentListWillBeUpdated(userId, listId);
+        allow update: if isOwner(userId) && isValidDocumentId(itemId) && uidNotModified() &&
+          isValidItem(request.resource.data) &&
+          parentListWillBeUpdated(userId, listId);
+        allow delete: if isOwner(userId);
+      }
+    }
+
+    match /users/{userId}/deletions/{listId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidDocumentId(listId) && uidUnchanged() &&
+        isValidDeletion(request.resource.data);
+      allow update: if isOwner(userId) && isValidDocumentId(listId) && uidNotModified() &&
+        isValidDeletion(request.resource.data);
+      allow delete: if isOwner(userId);
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

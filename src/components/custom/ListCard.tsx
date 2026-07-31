@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { ShoppingList, Item } from "@/types";
 import { Copy, Expand, Minimize2, Plus, Trash2 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
-import { listService, itemService } from "@/lib/db";
+import { listService, itemService, MAX_ITEM_TEXT_LENGTH, MAX_LIST_TITLE_LENGTH } from "@/lib/db";
 import { cn } from "@/lib/utils";
 
 interface ListCardProps {
@@ -151,7 +151,12 @@ export function ListCard({ list, onUpdate, isFocusMode = false, toggleFocusMode 
             aria-label="List title"
             className="h-auto border-none bg-transparent p-0 text-xl font-bold tracking-tight shadow-none focus-visible:ring-1 sm:text-2xl"
             defaultValue={list.title}
-            onBlur={(e) => handleTitleChange(e.target.value)}
+            maxLength={MAX_LIST_TITLE_LENGTH}
+            onBlur={(e) => {
+              const title = e.target.value.trim();
+              if (!title) e.target.value = list.title;
+              else handleTitleChange(title);
+            }}
             onKeyDown={(e) => {
                 if(e.key === 'Enter') e.currentTarget.blur();
             }}
@@ -191,7 +196,12 @@ export function ListCard({ list, onUpdate, isFocusMode = false, toggleFocusMode 
                             item.done && "line-through text-muted-foreground"
                         )}
                         defaultValue={item.text}
-                        onBlur={(e) => handleUpdateItemText(item.id, e.target.value)}
+                        maxLength={MAX_ITEM_TEXT_LENGTH}
+                        onBlur={(e) => {
+                          const text = e.target.value.trim();
+                          if (!text) e.target.value = item.text;
+                          else handleUpdateItemText(item.id, text);
+                        }}
                         onKeyDown={(e) => {
                             if(e.key === 'Enter') e.currentTarget.blur();
                         }}
@@ -215,6 +225,7 @@ export function ListCard({ list, onUpdate, isFocusMode = false, toggleFocusMode 
                     aria-label="New item"
                     placeholder="Add another item"
                     value={newItemText}
+                    maxLength={MAX_ITEM_TEXT_LENGTH}
                     onChange={handleAddItemInput}
                     className="h-11 flex-1 border-0 bg-transparent shadow-none"
                 />

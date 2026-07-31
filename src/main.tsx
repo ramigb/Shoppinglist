@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom'
 import { registerSW } from 'virtual:pwa-register'
 import App from './App'
 import { ThemeProvider } from './components/theme-provider'
+import { FirebaseAuthProvider } from './components/FirebaseAuthProvider'
 import './index.css'
 
 registerSW({
@@ -18,10 +19,12 @@ registerSW({
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
-      <BrowserRouter basename={import.meta.env.BASE_URL}>
-        <App />
-      </BrowserRouter>
-    </ThemeProvider>
+    <FirebaseAuthProvider>
+      <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">
+        <BrowserRouter basename={import.meta.env.BASE_URL}>
+          <App />
+        </BrowserRouter>
+      </ThemeProvider>
+    </FirebaseAuthProvider>
   </React.StrictMode>,
 )

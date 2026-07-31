@@ -11,6 +11,19 @@ node_modules
 dist
 dist-ssr
 *.local
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*service-account*.json
+*serviceAccount*.json
+*-firebase-adminsdk-*.json
+.runtimeconfig.json
+firebase-debug.log*
+.firebase/
 
 # Editor directories and files
 .vscode/*

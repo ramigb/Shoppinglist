@@ -32,9 +32,9 @@ export default function ListsPage() {
   useEffect(() => {
     fetchLists();
 
-    const handleListCreated = () => fetchLists();
-    window.addEventListener("list-created", handleListCreated);
-    return () => window.removeEventListener("list-created", handleListCreated);
+    const handleListsChanged = () => fetchLists();
+    window.addEventListener("lists-changed", handleListsChanged);
+    return () => window.removeEventListener("lists-changed", handleListsChanged);
   }, []);
 
   // Derive unique dates for filter
@@ -55,7 +55,7 @@ export default function ListsPage() {
   return (
     <div className="mx-auto max-w-4xl">
       <div className="mb-8 flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
-        <div><h1 className="text-3xl font-bold tracking-tight sm:text-4xl">All your lists</h1><p className="mt-2 text-muted-foreground">{lists.length} {lists.length === 1 ? "list" : "lists"}, saved on this device</p></div>
+        <div><h1 className="text-3xl font-bold tracking-tight sm:text-4xl">All your lists</h1><p className="mt-2 text-muted-foreground">{lists.length} {lists.length === 1 ? "list" : "lists"}, saved locally for offline use</p></div>
 
         <div className="flex w-full gap-3 sm:w-auto">
             <div className="flex-1 sm:w-40">

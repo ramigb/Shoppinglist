@@ -9,6 +9,7 @@ export interface ShoppingList {
   id: string;
   title: string;
   createdAt: string; // ISO string
+  updatedAt?: string; // ISO string; added when local or cloud data changes
   items: Item[];
 }
 

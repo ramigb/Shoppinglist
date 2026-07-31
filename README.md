@@ -9,7 +9,8 @@ A lightweight, single-page shopping list builder that parses comma or newline se
 - **Granular Control**: Add new items to existing lists or delete individual items.
 - **Focus Mode**: Expand a single list to full screen for distraction-free shopping.
 - **Sharing**: Share your list with others via a generated URL.
-- **Persistence**: Persists to `localStorage` via IndexedDB.
+- **Local-first persistence**: Lists remain available offline in IndexedDB.
+- **Optional device sync**: Firebase Authentication and Firestore sync signed-in users' lists across devices.
 - **PWA Support**: Install as an app on your desktop or mobile device.
 - **Backup & Restore**: Export and import your lists via JSON file.
 
@@ -17,7 +18,8 @@ A lightweight, single-page shopping list builder that parses comma or newline se
 - **Framework**: React 19, Vite, TypeScript
 - **Styling**: Tailwind CSS v4, Shadcn UI
 - **Routing**: React Router DOM
-- **State/Storage**: IndexedDB (via `idb`)
+- **State/Storage**: IndexedDB (via `idb`) and Cloud Firestore
+- **Authentication**: Firebase Email/Password
 
 ## Running the app
 
@@ -39,6 +41,22 @@ To run the application locally, you'll need Node.js installed.
     npm run build
     ```
     The build artifacts will be stored in the `dist/` directory.
+
+## Firebase
+
+The app is linked to the `shoppinglist-7a66b` Firebase Spark project. Firestore
+rules and indexes live in `firestore.rules` and `firestore.indexes.json`.
+
+Create users manually in **Firebase Console → Authentication → Users**. The app
+only exposes sign-in and password reset; it has no public registration UI.
+End-user account creation and self-deletion are also disabled at the Firebase
+API level; manage both actions through the Firebase Console.
+
+Deploy Firebase configuration with:
+
+```bash
+npx -y firebase-tools@latest deploy --only auth,firestore
+```
 
 ## Data model
 The backup file stores a JSON payload:

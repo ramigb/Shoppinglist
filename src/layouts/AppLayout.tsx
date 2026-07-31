@@ -5,6 +5,7 @@ import { useCreateList } from "@/components/custom/create-list-context";
 import { ModeToggle } from "@/components/mode-toggle";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { AuthControl } from "@/components/AuthControl";
 
 const navItems = [
   { label: "Today", path: "/", icon: Home },
@@ -39,6 +40,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
             ))}
           </nav>
           <div className="ml-auto flex items-center gap-2">
+            <AuthControl />
             <ModeToggle />
             <Button type="button" onClick={openCreateList} className="hidden rounded-xl sm:flex">
               <Plus className="size-4" /> New list

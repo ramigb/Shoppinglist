@@ -35,9 +35,8 @@ export default function HomePage() {
   useEffect(() => {
     fetchLatest();
 
-    // Listen for list creation events from the dialog
-    const handleListCreated = () => fetchLatest();
-    window.addEventListener("list-created", handleListCreated);
+    const handleListsChanged = () => fetchLatest();
+    window.addEventListener("lists-changed", handleListsChanged);
 
     // Refresh when app comes to foreground
     const handleVisibilityChange = () => {
@@ -49,7 +48,7 @@ export default function HomePage() {
     window.addEventListener("focus", fetchLatest);
 
     return () => {
-      window.removeEventListener("list-created", handleListCreated);
+      window.removeEventListener("lists-changed", handleListsChanged);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", fetchLatest);
     };

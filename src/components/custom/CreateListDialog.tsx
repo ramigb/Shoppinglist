@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useState } from "react";
-import { listService, itemService } from "@/lib/db";
+import { listService, itemService, MAX_LIST_ITEMS, MAX_LIST_TITLE_LENGTH } from "@/lib/db";
 import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 
@@ -30,6 +30,10 @@ export function CreateListDialog({ open, onOpenChange }: CreateListDialogProps) 
 
     if (rawItems.length === 0) {
       alert("Please add at least one item.");
+      return;
+    }
+    if (rawItems.length > MAX_LIST_ITEMS) {
+      alert(`A list can contain at most ${MAX_LIST_ITEMS} items.`);
       return;
     }
 
@@ -59,7 +63,6 @@ export function CreateListDialog({ open, onOpenChange }: CreateListDialogProps) 
     setTitle("");
     setItems("");
     navigate("/"); // Go to home to see the new list (or trigger re-fetch)
-    window.dispatchEvent(new Event("list-created")); // Simple event for now to trigger updates
   };
 
   return (
@@ -77,6 +80,7 @@ export function CreateListDialog({ open, onOpenChange }: CreateListDialogProps) 
             <Input
               id="title"
               placeholder="e.g. Weekly groceries"
+              maxLength={MAX_LIST_TITLE_LENGTH}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
             />
