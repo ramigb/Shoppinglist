@@ -4,11 +4,9 @@ import {
   doc,
   getDoc,
   getDocs,
-  onSnapshot,
   serverTimestamp,
   writeBatch,
   type DocumentSnapshot,
-  type Unsubscribe,
 } from "firebase/firestore";
 import {
   clearDeletionTombstone,
@@ -17,7 +15,6 @@ import {
   getDeletionTombstones,
   listService,
   MAX_LIST_ITEMS,
-  registerListSync,
   saveListFromSync,
   validateShoppingList,
 } from "./db";
@@ -25,7 +22,6 @@ import { firestore } from "./firebase";
 import {
   modifiedAt,
   reconciliationAction,
-  remoteChangeAction,
 } from "./sync-policy";
 import { Item, ShoppingList } from "../types";
 
@@ -34,8 +30,6 @@ type StatusListener = (status: SyncStatus) => void;
 
 const listeners = new Set<StatusListener>();
 let activeUserId: string | null = null;
-let unsubscribes: Unsubscribe[] = [];
-let onlineHandler: (() => void) | null = null;
 let writeQueue = Promise.resolve();
 let status: SyncStatus = "local";
 
@@ -227,71 +221,6 @@ async function reconcile(userId: string) {
   }
 }
 
-async function applyRemoteChange(userId: string, snapshot: DocumentSnapshot) {
-  if (snapshot.metadata.hasPendingWrites) return;
-  const remote = await readRemoteList(userId, snapshot);
-  if (!remote || !isActiveUser(userId)) return;
-  const local = await listService.get(remote.id);
-  if (remoteChangeAction(local, remote) === "save-remote") {
-    await saveListFromSync(remote);
-  }
-}
-
-async function applyRemoteDeletion(userId: string, snapshot: DocumentSnapshot) {
-  if (snapshot.metadata.hasPendingWrites) return;
-  const deletion = readRemoteDeletion(snapshot);
-  if (!deletion || !isActiveUser(userId)) return;
-  const local = await listService.get(deletion.id);
-  if (local && modifiedAt(local) > Date.parse(deletion.deletedAt)) {
-    await queueWrite(userId, () => writeRemoteList(userId, local));
-  } else if (local) {
-    await deleteListFromSync(deletion.id);
-  } else {
-    await clearDeletionTombstone(deletion.id);
-  }
-}
-
-function listen(userId: string) {
-  unsubscribes.push(onSnapshot(
-    listCollection(userId),
-    (snapshot) => {
-      void (async () => {
-        for (const change of snapshot.docChanges()) {
-          if (activeUserId !== userId) return;
-          if (change.type !== "removed") {
-            await applyRemoteChange(userId, change.doc);
-          }
-        }
-        if (activeUserId === userId) setStatus("synced");
-      })().catch((error) => {
-        console.error("Failed to apply Firebase update", error);
-        setStatus(navigator.onLine ? "error" : "offline");
-      });
-    },
-    (error) => {
-      console.error("Firestore listener failed", error);
-      setStatus(navigator.onLine ? "error" : "offline");
-    },
-  ));
-  unsubscribes.push(onSnapshot(
-    deletionCollection(userId),
-    (snapshot) => {
-      void (async () => {
-        for (const change of snapshot.docChanges()) {
-          if (change.type !== "removed") await applyRemoteDeletion(userId, change.doc);
-        }
-      })().catch((error) => {
-        console.error("Failed to apply Firebase deletion", error);
-        setStatus(navigator.onLine ? "error" : "offline");
-      });
-    },
-    (error) => {
-      console.error("Firestore deletion listener failed", error);
-      setStatus(navigator.onLine ? "error" : "offline");
-    },
-  ));
-}
-
 async function runWrite(userId: string, operation: () => Promise<void>) {
   if (!isActiveUser(userId)) return;
   setStatus("syncing");
@@ -310,20 +239,6 @@ function queueWrite(userId: string, operation: () => Promise<void>) {
   return queued;
 }
 
-function queueActiveWrite(operation: (userId: string) => Promise<void>) {
-  const userId = activeUserId;
-  if (!userId) return Promise.resolve();
-  return queueWrite(userId, () => operation(userId));
-}
-
-registerListSync({
-  save: (list) => queueActiveWrite((userId) => writeRemoteList(userId, list)),
-  delete: (id) => queueActiveWrite((userId) => deleteRemoteList(userId, id)),
-  clear: (ids) => queueActiveWrite(async (userId) => {
-    for (const id of ids) await deleteRemoteList(userId, id);
-  }),
-});
-
 export const syncService = {
   subscribe(listener: StatusListener) {
     listeners.add(listener);
@@ -336,35 +251,22 @@ export const syncService = {
   async start(userId: string) {
     this.stop();
     activeUserId = userId;
-    setStatus("syncing");
-    listen(userId);
-    onlineHandler = () => {
-      if (activeUserId !== userId) return;
-      setStatus("syncing");
-      void queueWrite(userId, () => reconcile(userId))
-        .then(() => {
-          if (activeUserId === userId) setStatus("synced");
-        })
-        .catch((error) => {
-          console.error("Firebase reconnect sync failed", error);
-          if (activeUserId === userId) setStatus("error");
-        });
-    };
-    window.addEventListener("online", onlineHandler);
+    await this.sync();
+  },
+
+  async sync() {
+    const userId = activeUserId;
+    if (!userId) return;
     try {
       await queueWrite(userId, () => reconcile(userId));
       if (activeUserId === userId) setStatus("synced");
     } catch (error) {
-      console.error("Initial Firebase sync failed", error);
+      console.error("Firebase sync failed", error);
       if (activeUserId === userId) setStatus(navigator.onLine ? "error" : "offline");
     }
   },
 
   stop() {
-    for (const unsubscribe of unsubscribes) unsubscribe();
-    unsubscribes = [];
-    if (onlineHandler) window.removeEventListener("online", onlineHandler);
-    onlineHandler = null;
     activeUserId = null;
     writeQueue = Promise.resolve();
     setStatus("local");

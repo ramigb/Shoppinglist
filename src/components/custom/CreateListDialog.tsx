@@ -8,10 +8,9 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useState } from "react";
-import { listService, itemService, MAX_LIST_ITEMS, MAX_LIST_TITLE_LENGTH } from "@/lib/db";
+import { listService, itemService, MAX_LIST_ITEMS } from "@/lib/db";
 import { useNavigate } from "react-router-dom";
 import { format } from "date-fns";
 
@@ -21,7 +20,6 @@ interface CreateListDialogProps {
 }
 
 export function CreateListDialog({ open, onOpenChange }: CreateListDialogProps) {
-  const [title, setTitle] = useState("");
   const [items, setItems] = useState("");
   const navigate = useNavigate();
 
@@ -38,11 +36,10 @@ export function CreateListDialog({ open, onOpenChange }: CreateListDialogProps) 
     }
 
     const createdAt = new Date().toISOString();
-    const listTitle = title.trim() || format(new Date(), "MMM d, yyyy, h:mm a");
 
     const newList = {
       id: crypto.randomUUID(),
-      title: listTitle,
+      title: format(new Date(), "MMM d, yyyy, h:mm a"),
       createdAt,
       items: rawItems.map((text) => ({
         id: crypto.randomUUID(),
@@ -60,7 +57,6 @@ export function CreateListDialog({ open, onOpenChange }: CreateListDialogProps) 
     }
 
     onOpenChange(false);
-    setTitle("");
     setItems("");
     navigate("/"); // Go to home to see the new list (or trigger re-fetch)
   };
@@ -76,16 +72,6 @@ export function CreateListDialog({ open, onOpenChange }: CreateListDialogProps) 
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="grid gap-2">
-            <Label htmlFor="title">List Title</Label>
-            <Input
-              id="title"
-              placeholder="e.g. Weekly groceries"
-              maxLength={MAX_LIST_TITLE_LENGTH}
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-            />
-          </div>
-          <div className="grid gap-2">
             <Label htmlFor="items">Items</Label>
             <Textarea
               id="items"
@@ -100,7 +86,6 @@ export function CreateListDialog({ open, onOpenChange }: CreateListDialogProps) 
             <div className="flex justify-between w-full">
                 <Button variant="ghost" onClick={() => {
                     setItems("");
-                    setTitle("");
                 }}>Clear</Button>
                 <Button onClick={handleCreate} className="px-6">Create list</Button>
             </div>

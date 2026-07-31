@@ -5,9 +5,10 @@ import {
   signOut,
 } from "firebase/auth";
 import { FirebaseError } from "firebase/app";
-import { Check, Cloud, CloudOff, LoaderCircle, LogOut } from "lucide-react";
+import { Check, Cloud, CloudOff, LoaderCircle, LogOut, RefreshCw } from "lucide-react";
 import { useAuth } from "./auth-context";
 import { firebaseAuth } from "@/lib/firebase";
+import { syncService } from "@/lib/sync";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -107,10 +108,14 @@ export function AuthControl() {
           <DropdownMenuLabel className="truncate">{user.email}</DropdownMenuLabel>
           <div className={cn("px-2 pb-2 text-xs", failed ? "text-destructive" : "text-muted-foreground")}>
             {syncing && "Syncing changes…"}
-            {syncStatus === "synced" && "Lists are synced across your devices."}
+            {syncStatus === "synced" && "Last sync completed."}
             {syncStatus === "offline" && "Offline. Changes remain saved locally."}
             {syncStatus === "error" && "Sync needs attention. Local data is safe."}
           </div>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem disabled={syncing} onSelect={() => void syncService.sync()}>
+            <RefreshCw className="mr-2 size-4" /> Sync now
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={() => void signOut(firebaseAuth)}>
             <LogOut className="mr-2 size-4" /> Sign out
