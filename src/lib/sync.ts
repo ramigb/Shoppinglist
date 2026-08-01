@@ -15,6 +15,7 @@ import {
   getDeletionTombstones,
   listService,
   MAX_LIST_ITEMS,
+  registerListSync,
   saveListFromSync,
   validateShoppingList,
 } from "./db";
@@ -238,6 +239,20 @@ function queueWrite(userId: string, operation: () => Promise<void>) {
   writeQueue = queued.catch(() => {});
   return queued;
 }
+
+function queueActiveWrite(operation: (userId: string) => Promise<void>) {
+  const userId = activeUserId;
+  if (!userId) return Promise.resolve();
+  return queueWrite(userId, () => operation(userId));
+}
+
+registerListSync({
+  save: (list) => queueActiveWrite((userId) => writeRemoteList(userId, list)),
+  delete: (id) => queueActiveWrite((userId) => deleteRemoteList(userId, id)),
+  clear: (ids) => queueActiveWrite(async (userId) => {
+    for (const id of ids) await deleteRemoteList(userId, id);
+  }),
+});
 
 export const syncService = {
   subscribe(listener: StatusListener) {

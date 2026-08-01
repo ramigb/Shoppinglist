@@ -36,11 +36,18 @@ interface ShoppingListDB extends DBSchema {
   };
 }
 
+interface ListSyncAdapter {
+  save(list: ShoppingList): Promise<void>;
+  delete(id: string): Promise<void>;
+  clear(ids: string[]): Promise<void>;
+}
+
 const GUEST_DB_NAME = "ShoppingListDB";
 const DB_VERSION = 3;
 const dbPromises = new Map<string, Promise<IDBPDatabase<ShoppingListDB>>>();
 
 let activeUserId: string | null = null;
+let syncAdapter: ListSyncAdapter | null = null;
 
 function getDB(name: string) {
   let dbPromise = dbPromises.get(name);
@@ -135,6 +142,10 @@ function listChanged() {
   window.dispatchEvent(new Event("lists-changed"));
 }
 
+function queueSync(operation: Promise<void>) {
+  void operation.catch((error) => console.error("Firebase sync failed", error));
+}
+
 function validDate(value: string) {
   return value.length <= 40 && Number.isFinite(Date.parse(value));
 }
@@ -167,6 +178,10 @@ export async function setActiveListUser(userId: string | null) {
   if (userId) await initializeUserDB(userId);
   activeUserId = userId;
   listChanged();
+}
+
+export function registerListSync(adapter: ListSyncAdapter) {
+  syncAdapter = adapter;
 }
 
 export function getActiveListUser() {
@@ -222,6 +237,7 @@ export const listService = {
     await transaction.objectStore("deletions").delete(savedList.id);
     await transaction.done;
     listChanged();
+    if (activeUserId && syncAdapter) queueSync(syncAdapter.save(savedList));
     return savedList.id;
   },
 
@@ -231,6 +247,7 @@ export const listService = {
     await transaction.objectStore("lists").delete(id);
     await transaction.objectStore("deletions").put({ id, deletedAt: new Date().toISOString() });
     await transaction.done;
+    if (activeUserId && syncAdapter) queueSync(syncAdapter.delete(id));
     listChanged();
   },
 
@@ -244,6 +261,7 @@ export const listService = {
       await transaction.objectStore("deletions").put({ id: list.id, deletedAt });
     }
     await transaction.done;
+    if (activeUserId && syncAdapter) queueSync(syncAdapter.clear(lists.map((list) => list.id)));
     listChanged();
   },
 };
