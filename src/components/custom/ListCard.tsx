@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { ShoppingList, Item } from "@/types";
-import { Copy, Expand, Minimize2, Plus, Trash2 } from "lucide-react";
+import { Copy, Expand, GripVertical, Minimize2, Plus, Trash2 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { listService, itemService, MAX_ITEM_TEXT_LENGTH, MAX_LIST_TITLE_LENGTH } from "@/lib/db";
 import { cn } from "@/lib/utils";
@@ -20,6 +20,7 @@ export function ListCard({ list, onUpdate, isFocusMode = false, toggleFocusMode 
   const [newItemText, setNewItemText] = useState("");
   const [suggestions, setSuggestions] = useState<{ id: string, name: string }[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const completedCount = items.filter((item) => item.done).length;
   const progress = items.length ? Math.round((completedCount / items.length) * 100) : 0;
@@ -106,6 +107,45 @@ export function ListCard({ list, onUpdate, isFocusMode = false, toggleFocusMode 
     onUpdate();
   };
 
+  const moveItem = (itemId: string, toIndex: number) => {
+    const fromIndex = items.findIndex((item) => item.id === itemId);
+    if (toIndex < 0 || toIndex >= items.length || toIndex === fromIndex) return items;
+    const reordered = [...items];
+    reordered.splice(toIndex, 0, ...reordered.splice(fromIndex, 1));
+    return reordered;
+  };
+
+  const saveOrder = async (orderedItems: Item[]) => {
+    const orderChanged = orderedItems.some((item, index) => item.id !== list.items[index]?.id);
+    if (!orderChanged) return;
+    await listService.save({ ...list, items: orderedItems });
+    onUpdate();
+  };
+
+  // Pointer events (not HTML5 drag-and-drop) so dragging also works on touch screens.
+  const handleDragMove = (e: React.PointerEvent, itemId: string) => {
+    if (draggingId !== itemId) return;
+    const row = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>("[data-item-id]");
+    const targetIndex = items.findIndex((item) => item.id === row?.dataset.itemId);
+    if (targetIndex !== -1) setItems(moveItem(itemId, targetIndex));
+  };
+
+  const handleDragEnd = () => {
+    if (!draggingId) return;
+    setDraggingId(null);
+    saveOrder(items);
+  };
+
+  const handleHandleKeyDown = (e: React.KeyboardEvent, itemId: string, index: number) => {
+    const offsets: Record<string, number> = { ArrowUp: -1, ArrowDown: 1 };
+    const offset = offsets[e.key];
+    if (!offset) return;
+    e.preventDefault();
+    const reordered = moveItem(itemId, index + offset);
+    setItems(reordered);
+    saveOrder(reordered);
+  };
+
   const handleAddItemInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setNewItemText(val);
@@ -182,8 +222,24 @@ export function ListCard({ list, onUpdate, isFocusMode = false, toggleFocusMode 
       <div className="h-1 bg-muted"><div className="h-full bg-primary transition-all duration-300" style={{ width: `${progress}%` }} /></div>
       <CardContent className="px-3 py-4 sm:px-5 sm:py-5">
         <div className="mb-5 space-y-1">
-            {items.map((item) => (
-                <div key={item.id} className={cn("group flex min-h-13 items-center gap-3 rounded-2xl px-3 transition-colors hover:bg-muted/70", item.done && "bg-muted/40")}>
+            {items.map((item, index) => (
+                <div key={item.id} data-item-id={item.id} className={cn("group flex min-h-13 items-center gap-3 rounded-2xl pl-1 pr-3 transition-colors hover:bg-muted/70", item.done && "bg-muted/40", draggingId === item.id && "bg-muted shadow-md")}>
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={`Reorder ${item.text}, use arrow keys to move`}
+                        className="size-10 shrink-0 cursor-grab touch-none text-muted-foreground active:cursor-grabbing"
+                        onPointerDown={(e) => {
+                          e.currentTarget.setPointerCapture(e.pointerId);
+                          setDraggingId(item.id);
+                        }}
+                        onPointerMove={(e) => handleDragMove(e, item.id)}
+                        onPointerUp={handleDragEnd}
+                        onPointerCancel={handleDragEnd}
+                        onKeyDown={(e) => handleHandleKeyDown(e, item.id, index)}
+                    >
+                        <GripVertical className="size-4" />
+                    </Button>
                     <Checkbox
                         aria-label={`Mark ${item.text} as ${item.done ? "not purchased" : "purchased"}`}
                         className="size-6 rounded-lg data-[state=checked]:bg-primary"
