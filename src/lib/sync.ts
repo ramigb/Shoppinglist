@@ -1,13 +1,25 @@
 import {
   Timestamp,
+  arrayRemove,
+  arrayUnion,
   collection,
+  deleteDoc,
+  deleteField,
   doc,
   getDoc,
   getDocs,
+  onSnapshot,
+  query,
   serverTimestamp,
+  setDoc,
+  updateDoc,
+  where,
   writeBatch,
+  type CollectionReference,
   type DocumentSnapshot,
+  type Unsubscribe,
 } from "firebase/firestore";
+import { FirebaseError } from "firebase/app";
 import {
   clearDeletionTombstone,
   deleteListFromSync,
@@ -15,39 +27,56 @@ import {
   getDeletionTombstones,
   listService,
   MAX_LIST_ITEMS,
+  MAX_LIST_MEMBERS,
   registerListSync,
   saveListFromSync,
   validateShoppingList,
 } from "./db";
-import { firestore } from "./firebase";
+import { firebaseAuth, firestore } from "./firebase";
 import {
+  changedItems,
   modifiedAt,
   reconciliationAction,
 } from "./sync-policy";
-import { Item, ShoppingList } from "../types";
+import { Item, ListInvite, ShoppingList } from "../types";
 
 export type SyncStatus = "local" | "syncing" | "synced" | "offline" | "error";
 type StatusListener = (status: SyncStatus) => void;
 
 const listeners = new Set<StatusListener>();
+// Tags this tab's list writes so the live listener can skip their echoes.
+const writerId = crypto.randomUUID();
+// Lists whose last remote write failed: their next write diffs against Firestore, not the local history.
+const unsyncedListIds = new Set<string>();
+// Lists whose remote update lost a race with a local edit; refreshed after that edit is written.
+const staleListIds = new Set<string>();
 let activeUserId: string | null = null;
 let writeQueue = Promise.resolve();
 let status: SyncStatus = "local";
+let stopListening: Unsubscribe = () => {};
 
 function setStatus(nextStatus: SyncStatus) {
   status = nextStatus;
   for (const listener of listeners) listener(status);
 }
 
-function listCollection(userId: string) {
+function listCollection() {
+  return collection(firestore, "lists");
+}
+
+function listDocument(listId: string) {
+  return doc(firestore, "lists", listId);
+}
+
+function itemCollection(listId: string) {
+  return collection(firestore, "lists", listId, "items");
+}
+
+function legacyListCollection(userId: string) {
   return collection(firestore, "users", userId, "lists");
 }
 
-function listDocument(userId: string, listId: string) {
-  return doc(firestore, "users", userId, "lists", listId);
-}
-
-function itemCollection(userId: string, listId: string) {
+function legacyItemCollection(userId: string, listId: string) {
   return collection(firestore, "users", userId, "lists", listId, "items");
 }
 
@@ -59,26 +88,36 @@ function deletionDocument(userId: string, listId: string) {
   return doc(firestore, "users", userId, "deletions", listId);
 }
 
+function inviteCollection() {
+  return collection(firestore, "invites");
+}
+
+function inviteDocument(listId: string, email: string) {
+  return doc(firestore, "invites", `${listId}_${email}`);
+}
+
 function dateValue(value: unknown): string | null {
   return value instanceof Timestamp ? value.toDate().toISOString() : null;
 }
 
-async function readRemoteList(userId: string, snapshot: DocumentSnapshot): Promise<ShoppingList | null> {
-  const data = snapshot.data({ serverTimestamps: "estimate" });
-  if (
-    !data ||
-    typeof data.title !== "string" ||
-    !Number.isInteger(data.itemCount) ||
-    data.itemCount < 0 ||
-    data.itemCount > MAX_LIST_ITEMS
-  ) return null;
+function isPermissionDenied(error: unknown) {
+  return error instanceof FirebaseError && error.code === "permission-denied";
+}
 
-  const createdAt = dateValue(data.createdAt);
-  const updatedAt = dateValue(data.updatedAt);
-  if (!createdAt || !updatedAt) return null;
+function signedInUser() {
+  const user = firebaseAuth.currentUser;
+  if (!user?.email) throw new Error("Sign in to share lists.");
+  return { uid: user.uid, email: user.email };
+}
 
-  const itemsSnapshot = await getDocs(itemCollection(userId, snapshot.id));
-  const items: Item[] = [];
+function sameMembers(a: Record<string, string> | undefined, b: unknown) {
+  const bKeys = b && typeof b === "object" ? Object.keys(b).sort().join() : "";
+  return Object.keys(a ?? {}).sort().join() === bKeys;
+}
+
+async function readRemoteItems(itemsRef: CollectionReference): Promise<Item[] | null> {
+  const itemsSnapshot = await getDocs(itemsRef);
+  const items: { item: Item; position: number }[] = [];
   for (const itemSnapshot of itemsSnapshot.docs) {
     const item = itemSnapshot.data();
     const doneDate = item.doneDate === null ? null : dateValue(item.doneDate);
@@ -89,11 +128,26 @@ async function readRemoteList(userId: string, snapshot: DocumentSnapshot): Promi
     ) {
       return null;
     }
-    items.push({ id: itemSnapshot.id, text: item.text, done: item.done, doneDate });
+    // Legacy items have no position; they keep their old ID order at the end.
+    const position = Number.isInteger(item.position) ? item.position : MAX_LIST_ITEMS;
+    items.push({ item: { id: itemSnapshot.id, text: item.text, done: item.done, doneDate }, position });
   }
+  return items.sort((a, b) => a.position - b.position).map(({ item }) => item);
+}
 
-  if (items.length > MAX_LIST_ITEMS || items.length !== data.itemCount) return null;
-  const list = { id: snapshot.id, title: data.title, createdAt, updatedAt, items };
+async function readRemoteList(snapshot: DocumentSnapshot, itemsRef: CollectionReference): Promise<ShoppingList | null> {
+  const data = snapshot.data({ serverTimestamps: "estimate" });
+  if (!data || typeof data.title !== "string") return null;
+
+  const createdAt = dateValue(data.createdAt);
+  const updatedAt = dateValue(data.updatedAt);
+  if (!createdAt || !updatedAt) return null;
+
+  const items = await readRemoteItems(itemsRef);
+  if (!items) return null;
+  const list: ShoppingList = { id: snapshot.id, title: data.title, createdAt, updatedAt, items };
+  if (data.ownerId !== undefined) list.ownerId = data.ownerId;
+  if (data.members !== undefined) list.members = { ...data.members };
   try {
     validateShoppingList(list);
     return list;
@@ -103,49 +157,104 @@ async function readRemoteList(userId: string, snapshot: DocumentSnapshot): Promi
   }
 }
 
-async function writeRemoteList(userId: string, list: ShoppingList) {
+async function writeRemoteList(userId: string, list: ShoppingList, previous?: ShoppingList) {
   validateShoppingList(list);
-  const listRef = listDocument(userId, list.id);
-  const itemsRef = itemCollection(userId, list.id);
-  const existingList = await getDoc(listRef);
-  const existingItems = existingList.exists() ? (await getDocs(itemsRef)).docs : [];
-  const itemIds = new Set(list.items.map((item) => item.id));
+  const trustedPrevious = unsyncedListIds.has(list.id) ? undefined : previous;
+  unsyncedListIds.add(list.id);
+  const listRef = listDocument(list.id);
+  const itemsRef = itemCollection(list.id);
+  const sharedWithMe = Boolean(list.ownerId && list.ownerId !== userId);
+
+  let remote: DocumentSnapshot;
+  try {
+    remote = await getDoc(listRef);
+  } catch (error) {
+    if (!sharedWithMe || !isPermissionDenied(error)) throw error;
+    await dropLostList(list.id);
+    return;
+  }
+  if (!remote.exists() && sharedWithMe) {
+    await dropLostList(list.id);
+    return;
+  }
+
+  let baseItems: Item[] = [];
+  if (remote.exists() && trustedPrevious) baseItems = trustedPrevious.items;
+  else if (remote.exists()) baseItems = (await readRemoteItems(itemsRef)) ?? [];
+  const { upserts, deletedIds } = changedItems(list.items, baseItems);
+
   const batch = writeBatch(firestore);
-
-  batch.set(listRef, {
-    title: list.title,
-    createdAt: Timestamp.fromDate(new Date(list.createdAt)),
-    updatedAt: serverTimestamp(),
-    itemCount: list.items.length,
-  });
-
-  for (const item of list.items) {
+  const listFields = { title: list.title, updatedAt: serverTimestamp(), writerId };
+  if (remote.exists()) {
+    batch.update(listRef, listFields);
+  } else {
+    batch.set(listRef, {
+      ...listFields,
+      createdAt: Timestamp.fromDate(new Date(list.createdAt)),
+      ownerId: userId,
+      memberIds: [userId],
+      members: { [userId]: signedInUser().email },
+    });
+  }
+  for (const { item, position } of upserts) {
     batch.set(doc(itemsRef, item.id), {
       text: item.text,
       done: item.done,
       doneDate: item.doneDate ? Timestamp.fromDate(new Date(item.doneDate)) : null,
+      position,
       updatedAt: serverTimestamp(),
     });
   }
-  for (const item of existingItems) {
-    if (!itemIds.has(item.id)) batch.delete(item.ref);
-  }
+  for (const itemId of deletedIds) batch.delete(doc(itemsRef, itemId));
   batch.delete(deletionDocument(userId, list.id));
 
   await batch.commit();
+  unsyncedListIds.delete(list.id);
+}
+
+// The owner deleted a shared list or removed this user from it.
+async function dropLostList(listId: string) {
+  unsyncedListIds.delete(listId);
+  await deleteListFromSync(listId);
 }
 
 async function deleteRemoteList(userId: string, listId: string) {
-  const listRef = listDocument(userId, listId);
-  const existingList = await getDoc(listRef);
-  const items = existingList.exists() ? (await getDocs(itemCollection(userId, listId))).docs : [];
+  const listRef = listDocument(listId);
+  let remote: DocumentSnapshot | null;
+  try {
+    remote = await getDoc(listRef);
+  } catch (error) {
+    if (!isPermissionDenied(error)) throw error;
+    remote = null; // Already removed from this shared list.
+  }
   const batch = writeBatch(firestore);
-  for (const item of items) batch.delete(item.ref);
-  batch.delete(listRef);
+  if (remote?.exists() && remote.data().ownerId === userId) {
+    for (const item of (await getDocs(itemCollection(listId))).docs) batch.delete(item.ref);
+    batch.delete(listRef);
+  } else if (remote?.exists()) {
+    // Deleting a list someone else shared means leaving it.
+    batch.update(listRef, { memberIds: arrayRemove(userId), [`members.${userId}`]: deleteField(), writerId });
+  }
   // buzzcut: Retain deletion markers so offline devices cannot resurrect lists; add server-side TTL only if deletion volume becomes material.
   batch.set(deletionDocument(userId, listId), { deletedAt: serverTimestamp() });
   await batch.commit();
   if (isActiveUser(userId)) await clearDeletionTombstone(listId);
+}
+
+async function readLegacyLists(userId: string) {
+  const snapshot = await getDocs(legacyListCollection(userId));
+  const lists = await Promise.all(
+    snapshot.docs.map((listSnapshot) => readRemoteList(listSnapshot, legacyItemCollection(userId, listSnapshot.id))),
+  );
+  return { ids: snapshot.docs.map((listSnapshot) => listSnapshot.id), lists };
+}
+
+async function deleteLegacyList(userId: string, listId: string) {
+  const items = await getDocs(legacyItemCollection(userId, listId));
+  const batch = writeBatch(firestore);
+  for (const item of items.docs) batch.delete(item.ref);
+  batch.delete(doc(legacyListCollection(userId), listId));
+  await batch.commit();
 }
 
 function isActiveUser(userId: string) {
@@ -159,19 +268,28 @@ function readRemoteDeletion(snapshot: DocumentSnapshot) {
 }
 
 async function reconcile(userId: string) {
-  const [localLists, remoteSnapshot, remoteDeletionSnapshot, tombstones] = await Promise.all([
+  const [localLists, remoteSnapshot, remoteDeletionSnapshot, tombstones, legacy] = await Promise.all([
     listService.getAll(),
-    getDocs(listCollection(userId)),
+    getDocs(query(listCollection(), where("memberIds", "array-contains", userId))),
     getDocs(deletionCollection(userId)),
     getDeletionTombstones(),
+    readLegacyLists(userId),
   ]);
   const remoteLists = await Promise.all(
-    remoteSnapshot.docs.map((snapshot) => readRemoteList(userId, snapshot)),
+    remoteSnapshot.docs.map((snapshot) => readRemoteList(snapshot, itemCollection(snapshot.id))),
   );
   const localById = new Map(localLists.map((list) => [list.id, list]));
   const remoteById = new Map(
     remoteLists.filter((list): list is ShoppingList => list !== null).map((list) => [list.id, list]),
   );
+  // Lists still stored under the pre-sharing users/{uid}/lists path migrate on this pass.
+  const legacyOnlyIds = new Set<string>();
+  for (const list of legacy.lists) {
+    if (list && !remoteById.has(list.id)) {
+      remoteById.set(list.id, list);
+      legacyOnlyIds.add(list.id);
+    }
+  }
   const remoteDeletions = new Map(
     remoteDeletionSnapshot.docs
       .map(readRemoteDeletion)
@@ -208,6 +326,13 @@ async function reconcile(userId: string) {
     }
   }
 
+  for (const local of localById.values()) {
+    if (local.ownerId && local.ownerId !== userId && !remoteById.has(local.id)) {
+      await dropLostList(local.id);
+      localById.delete(local.id);
+    }
+  }
+
   const ids = new Set([...localById.keys(), ...remoteById.keys()]);
   for (const id of ids) {
     if (!isActiveUser(userId)) return;
@@ -215,11 +340,62 @@ async function reconcile(userId: string) {
     const remote = remoteById.get(id);
     const action = reconciliationAction(local, remote);
     if (action === "write-local" && local) {
+      // buzzcut: A list edited offline overwrites collaborators' concurrent remote edits (whole-list last-writer-wins); merge per item if this bites in practice.
       await writeRemoteList(userId, local);
     } else if (action === "save-remote" && remote) {
       await saveListFromSync(remote);
+      if (legacyOnlyIds.has(id)) await writeRemoteList(userId, remote);
     }
   }
+
+  for (const listId of legacy.ids) {
+    if (!isActiveUser(userId)) return;
+    await deleteLegacyList(userId, listId);
+  }
+}
+
+// Pulls one list from Firestore into IndexedDB unless a local edit raced it.
+async function applyRemoteList(userId: string, listId: string) {
+  if (!isActiveUser(userId) || unsyncedListIds.has(listId)) return;
+  const local = await listService.get(listId);
+  const snapshot = await getDoc(listDocument(listId));
+  if (!snapshot.exists()) return;
+  const remote = await readRemoteList(snapshot, itemCollection(listId));
+  if (!remote || !isActiveUser(userId)) return;
+  const applied = await saveListFromSync(remote, local ? local.updatedAt ?? null : null);
+  if (!applied) staleListIds.add(listId);
+}
+
+function listenForRemoteChanges(userId: string) {
+  let initialSnapshot = true;
+  return onSnapshot(
+    query(listCollection(), where("memberIds", "array-contains", userId)),
+    (snapshot) => {
+      // The initial state is handled by reconcile, which runs right after this listener starts.
+      if (initialSnapshot) {
+        initialSnapshot = false;
+        return;
+      }
+      for (const change of snapshot.docChanges()) {
+        const listId = change.doc.id;
+        if (change.type === "removed") {
+          void queueWrite(userId, () => dropLostList(listId)).catch(() => {});
+          continue;
+        }
+        if (change.doc.metadata.hasPendingWrites) continue;
+        void queueWrite(userId, async () => {
+          const local = await listService.get(listId);
+          const data = change.doc.data();
+          if (local && data.writerId === writerId && sameMembers(local.members, data.members)) return;
+          await applyRemoteList(userId, listId);
+        }).catch((error) => console.error("Live list update failed", error));
+      }
+    },
+    (error) => {
+      console.error("Live sync stopped", error);
+      if (activeUserId === userId) setStatus(navigator.onLine ? "error" : "offline");
+    },
+  );
 }
 
 async function runWrite(userId: string, operation: () => Promise<void>) {
@@ -247,7 +423,10 @@ function queueActiveWrite(operation: (userId: string) => Promise<void>) {
 }
 
 registerListSync({
-  save: (list) => queueActiveWrite((userId) => writeRemoteList(userId, list)),
+  save: (list, previous) => queueActiveWrite(async (userId) => {
+    await writeRemoteList(userId, list, previous);
+    if (staleListIds.delete(list.id)) await applyRemoteList(userId, list.id);
+  }),
   delete: (id) => queueActiveWrite((userId) => deleteRemoteList(userId, id)),
   clear: (ids) => queueActiveWrite(async (userId) => {
     for (const id of ids) await deleteRemoteList(userId, id);
@@ -266,6 +445,7 @@ export const syncService = {
   async start(userId: string) {
     this.stop();
     activeUserId = userId;
+    stopListening = listenForRemoteChanges(userId);
     await this.sync();
   },
 
@@ -282,8 +462,110 @@ export const syncService = {
   },
 
   stop() {
+    stopListening();
+    stopListening = () => {};
     activeUserId = null;
     writeQueue = Promise.resolve();
+    unsyncedListIds.clear();
+    staleListIds.clear();
     setStatus("local");
+  },
+};
+
+function readInvite(snapshot: DocumentSnapshot): ListInvite | null {
+  const data = snapshot.data();
+  if (
+    typeof data?.listId !== "string" ||
+    typeof data.listTitle !== "string" ||
+    typeof data.fromEmail !== "string" ||
+    typeof data.toEmail !== "string"
+  ) {
+    return null;
+  }
+  return { listId: data.listId, listTitle: data.listTitle, fromEmail: data.fromEmail, toEmail: data.toEmail };
+}
+
+function isInvite(invite: ListInvite | null): invite is ListInvite {
+  return invite !== null;
+}
+
+export function sharingErrorMessage(error: unknown) {
+  if (error instanceof FirebaseError) {
+    if (error.code === "permission-denied") {
+      return "That didn't go through. The person may already be invited, or the list may be full or gone.";
+    }
+    if (error.code === "unavailable") return "You appear to be offline. Try again when connected.";
+    return "Something went wrong. Please try again.";
+  }
+  return error instanceof Error ? error.message : "Something went wrong. Please try again.";
+}
+
+export const sharingService = {
+  async invite(list: ShoppingList, email: string) {
+    const user = signedInUser();
+    const toEmail = email.trim().toLowerCase();
+    if (toEmail.length > 254 || !/^[^\s@/]+@[^\s@/]+$/.test(toEmail)) {
+      throw new Error("Enter a valid email address.");
+    }
+    if (toEmail === user.email.toLowerCase()) throw new Error("You already have this list.");
+    const members = Object.values(list.members ?? {});
+    if (members.some((memberEmail) => memberEmail.toLowerCase() === toEmail)) {
+      throw new Error("That person already has this list.");
+    }
+    if (members.length >= MAX_LIST_MEMBERS) {
+      throw new Error(`A list can be shared with at most ${MAX_LIST_MEMBERS} people.`);
+    }
+    // Invite rules check list ownership, so the list must exist in Firestore first.
+    await queueActiveWrite(async (userId) => {
+      if (!(await getDoc(listDocument(list.id))).exists()) await writeRemoteList(userId, list);
+    });
+    await setDoc(inviteDocument(list.id, toEmail), {
+      listId: list.id,
+      listTitle: list.title,
+      fromUid: user.uid,
+      fromEmail: user.email,
+      toEmail,
+      createdAt: serverTimestamp(),
+    });
+  },
+
+  async pendingInvites(listId: string) {
+    const snapshot = await getDocs(query(inviteCollection(), where("fromUid", "==", signedInUser().uid)));
+    return snapshot.docs.map(readInvite).filter(isInvite).filter((invite) => invite.listId === listId);
+  },
+
+  subscribeToMyInvites(email: string, onChange: (invites: ListInvite[]) => void) {
+    return onSnapshot(
+      query(inviteCollection(), where("toEmail", "==", email.toLowerCase())),
+      (snapshot) => onChange(snapshot.docs.map(readInvite).filter(isInvite)),
+      (error) => console.error("Could not load invitations", error),
+    );
+  },
+
+  async accept(invite: ListInvite) {
+    const user = signedInUser();
+    const batch = writeBatch(firestore);
+    batch.update(listDocument(invite.listId), {
+      memberIds: arrayUnion(user.uid),
+      [`members.${user.uid}`]: user.email,
+      writerId,
+    });
+    batch.delete(inviteDocument(invite.listId, invite.toEmail));
+    await batch.commit();
+    await queueActiveWrite((userId) => applyRemoteList(userId, invite.listId));
+  },
+
+  // Declines an invitation, or cancels one the owner sent.
+  async removeInvite(invite: ListInvite) {
+    await deleteDoc(inviteDocument(invite.listId, invite.toEmail));
+  },
+
+  async removeMember(listId: string, memberId: string) {
+    await updateDoc(listDocument(listId), {
+      memberIds: arrayRemove(memberId),
+      [`members.${memberId}`]: deleteField(),
+      writerId,
+    });
+    await queueActiveWrite((userId) => applyRemoteList(userId, listId));
   },
 };

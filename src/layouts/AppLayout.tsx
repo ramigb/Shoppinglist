@@ -6,6 +6,7 @@ import { ModeToggle } from "@/components/mode-toggle";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { AuthControl } from "@/components/AuthControl";
+import { InvitationsBanner } from "@/components/custom/InvitationsBanner";
 
 const navItems = [
   { label: "Today", path: "/", icon: Home },
@@ -49,7 +50,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 pb-28 pt-8 sm:px-6 md:pb-12 md:pt-10">{children}</main>
+      <main className="mx-auto max-w-6xl px-4 pb-28 pt-8 sm:px-6 md:pb-12 md:pt-10"><InvitationsBanner />{children}</main>
 
       <nav className="fixed inset-x-3 bottom-3 z-40 grid grid-cols-5 rounded-2xl border border-border/70 bg-card/95 p-1.5 shadow-2xl backdrop-blur-xl md:hidden" aria-label="Mobile navigation">
         {navItems.slice(0, 2).map(({ label, path, icon: Icon }) => <MobileLink key={path} {...{label,path,Icon}} active={location.pathname === path} />)}

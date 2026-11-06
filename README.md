@@ -11,6 +11,7 @@ A lightweight, single-page shopping list builder that parses comma or newline se
 - **Sharing**: Share your list with others via a generated URL.
 - **Local-first persistence**: Lists remain available offline in IndexedDB.
 - **Optional device sync**: Firebase Authentication and Firestore sync signed-in users' lists across devices.
+- **Shared lists**: Signed-in owners invite other users by email; invitees accept in the app and everyone edits the list live.
 - **PWA Support**: Install as an app on your desktop or mobile device.
 - **Backup & Restore**: Export and import your lists via JSON file.
 
@@ -57,6 +58,10 @@ Deploy Firebase configuration with:
 ```bash
 npx -y firebase-tools@latest deploy --only auth,firestore
 ```
+
+Deploy rules before shipping app code that depends on them. Older app versions
+cannot write once the shared-list rules are live; their local data stays safe and
+syncs after they update.
 
 ## Data model
 The backup file stores a JSON payload:

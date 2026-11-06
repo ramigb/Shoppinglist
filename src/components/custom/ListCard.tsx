@@ -3,10 +3,12 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { ShoppingList, Item } from "@/types";
-import { Copy, Expand, GripVertical, Minimize2, Plus, Trash2 } from "lucide-react";
+import { Copy, Expand, GripVertical, LogOut, Minimize2, Plus, Trash2, UserPlus, Users } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { listService, itemService, MAX_ITEM_TEXT_LENGTH, MAX_LIST_TITLE_LENGTH } from "@/lib/db";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/components/auth-context";
+import { ShareListDialog } from "./ShareListDialog";
 
 interface ListCardProps {
   list: ShoppingList;
@@ -21,6 +23,10 @@ export function ListCard({ list, onUpdate, isFocusMode = false, toggleFocusMode 
   const [suggestions, setSuggestions] = useState<{ id: string, name: string }[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
+  const { user } = useAuth();
+  const isOwner = !list.ownerId || list.ownerId === user?.uid;
+  const sharedWithCount = Object.keys(list.members ?? {}).length - 1;
   const wrapperRef = useRef<HTMLDivElement>(null);
   const completedCount = items.filter((item) => item.done).length;
   const progress = items.length ? Math.round((completedCount / items.length) * 100) : 0;
@@ -52,7 +58,10 @@ export function ListCard({ list, onUpdate, isFocusMode = false, toggleFocusMode 
   };
 
   const handleDeleteList = async () => {
-    if (confirm("Are you sure you want to delete this list?")) {
+    let question = "Are you sure you want to delete this list?";
+    if (!isOwner) question = "Leave this shared list? It will be removed from your devices.";
+    else if (sharedWithCount > 0) question = "Delete this list for everyone it's shared with?";
+    if (confirm(question)) {
       await listService.delete(list.id);
       if (isFocusMode && toggleFocusMode) toggleFocusMode(null);
       onUpdate();
@@ -190,6 +199,7 @@ export function ListCard({ list, onUpdate, isFocusMode = false, toggleFocusMode 
           <Input
             aria-label="List title"
             className="h-auto border-none bg-transparent p-0 text-xl font-bold tracking-tight shadow-none focus-visible:ring-1 sm:text-2xl"
+            key={list.title}
             defaultValue={list.title}
             maxLength={MAX_LIST_TITLE_LENGTH}
             onBlur={(e) => {
@@ -204,6 +214,14 @@ export function ListCard({ list, onUpdate, isFocusMode = false, toggleFocusMode 
           <p className="mt-1.5 text-sm text-muted-foreground">
             {completedCount} of {items.length} items · {new Date(list.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
           </p>
+          {sharedWithCount > 0 && (
+            <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Users className="size-3.5" />
+              {isOwner
+                ? `Shared with ${sharedWithCount} ${sharedWithCount === 1 ? "person" : "people"}`
+                : `Shared by ${list.members?.[list.ownerId ?? ""] ?? "another user"}`}
+            </p>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-0.5">
           {toggleFocusMode && (
@@ -214,8 +232,13 @@ export function ListCard({ list, onUpdate, isFocusMode = false, toggleFocusMode 
           <Button aria-label="Copy share link" variant="ghost" size="icon" onClick={handleShare}>
             <Copy className="size-4" />
           </Button>
-          <Button aria-label="Delete list" variant="ghost" size="icon" onClick={handleDeleteList} className="text-muted-foreground hover:text-destructive">
-            <Trash2 className="size-4" />
+          {user && isOwner && (
+            <Button aria-label="Share with people" variant="ghost" size="icon" onClick={() => setShareOpen(true)}>
+              <UserPlus className="size-4" />
+            </Button>
+          )}
+          <Button aria-label={isOwner ? "Delete list" : "Leave list"} variant="ghost" size="icon" onClick={handleDeleteList} className="text-muted-foreground hover:text-destructive">
+            {isOwner ? <Trash2 className="size-4" /> : <LogOut className="size-4" />}
           </Button>
         </div>
       </CardHeader>
@@ -247,6 +270,7 @@ export function ListCard({ list, onUpdate, isFocusMode = false, toggleFocusMode 
                         onCheckedChange={(c) => handleToggleItem(item.id, c === true)}
                     />
                     <Input
+                        key={item.text}
                         className={cn(
                             "h-10 flex-1 border-none bg-transparent px-0 text-base shadow-none focus-visible:ring-1",
                             item.done && "line-through text-muted-foreground"
@@ -304,6 +328,7 @@ export function ListCard({ list, onUpdate, isFocusMode = false, toggleFocusMode 
             )}
         </div>
       </CardContent>
+      {user && isOwner && <ShareListDialog list={list} open={shareOpen} onOpenChange={setShareOpen} />}
     </Card>
   );
 }

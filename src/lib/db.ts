@@ -5,6 +5,7 @@ import { AutocompleteItem, ShoppingList } from "../types";
 export const MAX_LIST_ITEMS = 200;
 export const MAX_LIST_TITLE_LENGTH = 200;
 export const MAX_ITEM_TEXT_LENGTH = 500;
+export const MAX_LIST_MEMBERS = 10;
 
 export interface ListDeletion {
   id: string;
@@ -37,7 +38,7 @@ interface ShoppingListDB extends DBSchema {
 }
 
 interface ListSyncAdapter {
-  save(list: ShoppingList): Promise<void>;
+  save(list: ShoppingList, previous: ShoppingList | undefined): Promise<void>;
   delete(id: string): Promise<void>;
   clear(ids: string[]): Promise<void>;
 }
@@ -158,6 +159,19 @@ export function validateShoppingList(list: ShoppingList) {
   if (!validDate(list.createdAt) || (list.updatedAt && !validDate(list.updatedAt))) {
     throw new Error("Invalid list date.");
   }
+  if (list.ownerId !== undefined && (typeof list.ownerId !== "string" || !list.ownerId || list.ownerId.length > 128)) {
+    throw new Error("Invalid list owner.");
+  }
+  if (list.members !== undefined) {
+    const members = typeof list.members === "object" && list.members ? Object.entries(list.members) : [];
+    if (
+      !members.length ||
+      members.length > MAX_LIST_MEMBERS ||
+      members.some(([uid, email]) => !uid || uid.length > 128 || typeof email !== "string" || email.length > 254)
+    ) {
+      throw new Error("Invalid list members.");
+    }
+  }
   if (!Array.isArray(list.items) || list.items.length > MAX_LIST_ITEMS) {
     throw new Error(`Lists can contain at most ${MAX_LIST_ITEMS} items.`);
   }
@@ -193,14 +207,25 @@ export async function getDeletionTombstones() {
   return db.getAll("deletions");
 }
 
-export async function saveListFromSync(list: ShoppingList) {
+// With expectedUpdatedAt, only saves if the local copy is still that version (compare-and-set),
+// so a remote update never overwrites a local edit made while it was being fetched.
+export async function saveListFromSync(list: ShoppingList, expectedUpdatedAt?: string | null) {
   validateShoppingList(list);
   const db = await getActiveDB();
   const transaction = db.transaction(["lists", "deletions"], "readwrite");
+  if (expectedUpdatedAt !== undefined) {
+    const current = await transaction.objectStore("lists").get(list.id);
+    if ((current?.updatedAt ?? null) !== expectedUpdatedAt) {
+      transaction.abort();
+      await transaction.done.catch(() => {});
+      return false;
+    }
+  }
   await transaction.objectStore("lists").put(list);
   await transaction.objectStore("deletions").delete(list.id);
   await transaction.done;
   listChanged();
+  return true;
 }
 
 export async function deleteListFromSync(id: string) {
@@ -233,11 +258,12 @@ export const listService = {
     validateShoppingList(savedList);
     const db = await getActiveDB();
     const transaction = db.transaction(["lists", "deletions"], "readwrite");
+    const previous = await transaction.objectStore("lists").get(savedList.id);
     await transaction.objectStore("lists").put(savedList);
     await transaction.objectStore("deletions").delete(savedList.id);
     await transaction.done;
     listChanged();
-    if (activeUserId && syncAdapter) queueSync(syncAdapter.save(savedList));
+    if (activeUserId && syncAdapter) queueSync(syncAdapter.save(savedList, previous));
     return savedList.id;
   },
 

@@ -2,28 +2,41 @@
 // Assumed Data Model
 // ===============================================================
 //
-// Collection: users/{userId}/lists
+// Collection: lists
 // Document ID: list UUID
 // Fields:
 //   - title: string (required, 1..200 characters)
 //   - createdAt: timestamp (required, immutable)
 //   - updatedAt: timestamp (required, server request time)
-//   - itemCount: integer (required, 0..200)
+//   - writerId: string (required, random per browser tab; lets clients skip echoes)
+//   - ownerId: string (required, immutable, creator's uid)
+//   - memberIds: list<string> (required, uids with access incl. owner, 1..10)
+//   - members: map<uid, email> (required, same uids as memberIds)
 //
-// Collection: users/{userId}/lists/{listId}/items
+// Collection: lists/{listId}/items
 // Document ID: item UUID
 // Fields:
 //   - text: string (required, 1..500 characters)
 //   - done: bool (required)
 //   - doneDate: timestamp or null (required)
+//   - position: int (required, 0..199, display order)
 //   - updatedAt: timestamp (required, server request time)
+//
+// Collection: invites
+// Document ID: "{listId}_{toEmail}"
+// Fields:
+//   - listId, listTitle, fromUid, fromEmail, toEmail (lowercase): string
+//   - createdAt: timestamp (required, server request time)
 //
 // Collection: users/{userId}/deletions
 // Document ID: deleted list UUID
 // Fields:
 //   - deletedAt: timestamp (required, server request time)
 //
-// No user profile or PII documents are stored.
+// Collection: users/{userId}/lists (legacy, pre-sharing): read and delete only,
+// so clients can migrate it into the top-level lists collection.
+//
+// Emails are stored only where sharing needs them: list members and invites.
 // ===============================================================
 
 rules_version = '2';
@@ -61,30 +74,136 @@ service cloud.firestore {
         value <= request.time + duration.value(5, 'm');
     }
 
-    function isValidList(data) {
-      return hasRequiredFields(data, ['title', 'createdAt', 'updatedAt', 'itemCount']) &&
-        data.keys().hasOnly(['title', 'createdAt', 'updatedAt', 'itemCount']) &&
-        data.title is string &&
-        data.title.size() >= 1 &&
-        data.title.size() <= 200 &&
+    function signedInEmail() {
+      return request.auth.token.email.lower();
+    }
+
+    function isValidTitle(title) {
+      return title is string && title.size() >= 1 && title.size() <= 200;
+    }
+
+    function isValidWriterId(value) {
+      return value is string && value.size() >= 1 && value.size() <= 64;
+    }
+
+    function listPath(listId) {
+      return /databases/$(database)/documents/lists/$(listId);
+    }
+
+    function isNewList(data) {
+      let uid = request.auth.uid;
+      return hasRequiredFields(data, ['title', 'createdAt', 'updatedAt', 'writerId', 'ownerId', 'memberIds', 'members']) &&
+        data.keys().hasOnly(['title', 'createdAt', 'updatedAt', 'writerId', 'ownerId', 'memberIds', 'members']) &&
+        isValidTitle(data.title) &&
         isReasonableClientTime(data.createdAt) &&
-        data.updatedAt is timestamp &&
         data.updatedAt == request.time &&
-        data.itemCount is int &&
-        data.itemCount >= 0 &&
-        data.itemCount <= 200;
+        isValidWriterId(data.writerId) &&
+        data.ownerId == uid &&
+        data.memberIds == [uid] &&
+        data.members is map &&
+        data.members.keys() == [uid] &&
+        data.members[uid] == request.auth.token.email;
+    }
+
+    // Any member edits the title; items are separate documents.
+    function isContentUpdate() {
+      let after = request.resource.data;
+      return request.auth.uid in resource.data.memberIds &&
+        after.diff(resource.data).affectedKeys().hasOnly(['title', 'updatedAt', 'writerId']) &&
+        isValidTitle(after.title) &&
+        after.updatedAt == request.time &&
+        isValidWriterId(after.writerId);
+    }
+
+    function membershipOnlyChanged() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds', 'members', 'writerId']) &&
+        isValidWriterId(request.resource.data.writerId) &&
+        request.resource.data.members is map;
+    }
+
+    // An invited user adds only themselves, and only while their invite exists.
+    function isJoin(listId) {
+      let uid = request.auth.uid;
+      let before = resource.data;
+      let after = request.resource.data;
+      let memberDiff = after.members.diff(before.members);
+      let inviteId = listId + '_' + signedInEmail();
+      return membershipOnlyChanged() &&
+        !(uid in before.memberIds) &&
+        after.memberIds.size() == before.memberIds.size() + 1 &&
+        after.memberIds.size() <= 10 &&
+        after.memberIds.toSet() == before.memberIds.toSet().union([uid].toSet()) &&
+        memberDiff.addedKeys() == [uid].toSet() &&
+        memberDiff.changedKeys().size() == 0 &&
+        memberDiff.removedKeys().size() == 0 &&
+        after.members[uid] == request.auth.token.email &&
+        exists(/databases/$(database)/documents/invites/$(inviteId));
+    }
+
+    // A member leaves, or the owner removes one non-owner member.
+    function isMemberRemoval() {
+      let before = resource.data;
+      let after = request.resource.data;
+      let removed = before.memberIds.toSet().difference(after.memberIds.toSet());
+      let memberDiff = after.members.diff(before.members);
+      return membershipOnlyChanged() &&
+        before.memberIds.hasAll(after.memberIds) &&
+        after.memberIds.size() == before.memberIds.size() - 1 &&
+        before.ownerId in after.memberIds &&
+        memberDiff.removedKeys() == removed &&
+        memberDiff.addedKeys().size() == 0 &&
+        memberDiff.changedKeys().size() == 0 &&
+        (request.auth.uid == before.ownerId || removed == [request.auth.uid].toSet());
+    }
+
+    function isMemberOf(listId) {
+      return request.auth.uid in get(listPath(listId)).data.memberIds;
+    }
+
+    function isMemberOfUpdatedList(listId) {
+      return existsAfter(listPath(listId)) &&
+        request.auth.uid in getAfter(listPath(listId)).data.memberIds &&
+        getAfter(listPath(listId)).data.updatedAt == request.time;
     }
 
     function isValidItem(data) {
-      return hasRequiredFields(data, ['text', 'done', 'doneDate', 'updatedAt']) &&
-        data.keys().hasOnly(['text', 'done', 'doneDate', 'updatedAt']) &&
+      return hasRequiredFields(data, ['text', 'done', 'doneDate', 'position', 'updatedAt']) &&
+        data.keys().hasOnly(['text', 'done', 'doneDate', 'position', 'updatedAt']) &&
         data.text is string &&
         data.text.size() >= 1 &&
         data.text.size() <= 500 &&
         data.done is bool &&
         (data.doneDate == null || isReasonableClientTime(data.doneDate)) &&
+        data.position is int &&
+        data.position >= 0 &&
+        data.position < 200 &&
         data.updatedAt is timestamp &&
         data.updatedAt == request.time;
+    }
+
+    function isValidInvite(inviteId, data) {
+      let list = get(listPath(data.listId)).data;
+      return hasRequiredFields(data, ['listId', 'listTitle', 'fromUid', 'fromEmail', 'toEmail', 'createdAt']) &&
+        data.keys().hasOnly(['listId', 'listTitle', 'fromUid', 'fromEmail', 'toEmail', 'createdAt']) &&
+        data.listId is string &&
+        isValidDocumentId(data.listId) &&
+        isValidTitle(data.listTitle) &&
+        data.fromUid == request.auth.uid &&
+        data.fromEmail == request.auth.token.email &&
+        data.toEmail is string &&
+        data.toEmail.size() >= 3 &&
+        data.toEmail.size() <= 254 &&
+        data.toEmail == data.toEmail.lower() &&
+        data.toEmail != signedInEmail() &&
+        inviteId == data.listId + '_' + data.toEmail &&
+        data.createdAt == request.time &&
+        list.ownerId == request.auth.uid &&
+        list.memberIds.size() < 10;
+    }
+
+    function isInviteParty() {
+      return isAuthenticated() &&
+        (resource.data.fromUid == request.auth.uid || resource.data.toEmail == signedInEmail());
     }
 
     function isValidDeletion(data) {
@@ -94,33 +213,32 @@ service cloud.firestore {
         data.deletedAt == request.time;
     }
 
-    function parentListExists(userId, listId) {
-      return exists(/databases/$(database)/documents/users/$(userId)/lists/$(listId));
+    match /lists/{listId} {
+      // Reading a missing list is allowed so clients can tell "deleted" from "no access".
+      allow get: if isAuthenticated() && (resource == null || request.auth.uid in resource.data.memberIds);
+      allow list: if isAuthenticated() && request.auth.uid in resource.data.memberIds;
+      allow create: if isAuthenticated() && isValidDocumentId(listId) && isNewList(request.resource.data);
+      allow update: if isAuthenticated() && (isContentUpdate() || isJoin(listId) || isMemberRemoval());
+      allow delete: if isAuthenticated() && resource.data.ownerId == request.auth.uid;
+
+      match /items/{itemId} {
+        allow read: if isAuthenticated() && isMemberOf(listId);
+        allow create, update: if isAuthenticated() && isValidDocumentId(itemId) &&
+          isValidItem(request.resource.data) && isMemberOfUpdatedList(listId);
+        allow delete: if isAuthenticated() && isMemberOf(listId);
+      }
     }
 
-    function parentListWillBeUpdated(userId, listId) {
-      let parent = /databases/$(database)/documents/users/$(userId)/lists/$(listId);
-      return existsAfter(parent) && getAfter(parent).data.updatedAt == request.time;
+    match /invites/{inviteId} {
+      allow read, delete: if isInviteParty();
+      allow create: if isAuthenticated() && isValidInvite(inviteId, request.resource.data);
     }
 
     match /users/{userId}/lists/{listId} {
-      allow read: if isOwner(userId);
-      allow create: if isOwner(userId) && isValidDocumentId(listId) &&
-        uidUnchanged() && isValidList(request.resource.data);
-      allow update: if isOwner(userId) && isValidDocumentId(listId) && uidNotModified() &&
-        isValidList(request.resource.data) &&
-        request.resource.data.createdAt == resource.data.createdAt;
-      allow delete: if isOwner(userId);
+      allow read, delete: if isOwner(userId);
 
       match /items/{itemId} {
-        allow read: if isOwner(userId) && parentListExists(userId, listId);
-        allow create: if isOwner(userId) && isValidDocumentId(itemId) && uidUnchanged() &&
-          isValidItem(request.resource.data) &&
-          parentListWillBeUpdated(userId, listId);
-        allow update: if isOwner(userId) && isValidDocumentId(itemId) && uidNotModified() &&
-          isValidItem(request.resource.data) &&
-          parentListWillBeUpdated(userId, listId);
-        allow delete: if isOwner(userId);
+        allow read, delete: if isOwner(userId);
       }
     }
 
